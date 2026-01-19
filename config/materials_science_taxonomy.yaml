@@ -1,0 +1,348 @@
+# Materials Science Taxonomy for HAL 9000
+# Hierarchical topic structure for document classification
+
+taxonomy:
+  name: Materials Science
+  version: "1.0"
+
+  topics:
+    # Magnetic Materials
+    - name: Magnetic Materials
+      slug: magnetic-materials
+      description: Research on magnetic properties and applications
+      keywords:
+        - magnetic
+        - magnetism
+        - ferromagnetic
+        - antiferromagnetic
+        - magnetization
+        - coercivity
+        - remanence
+      children:
+        - name: Rare-Earth Magnets
+          slug: rare-earth-magnets
+          description: Permanent magnets containing rare-earth elements
+          keywords:
+            - rare earth
+            - neodymium
+            - samarium
+            - NdFeB
+            - SmCo
+            - Nd2Fe14B
+            - permanent magnet
+        - name: Rare-Earth-Free Magnets
+          slug: rare-earth-free-magnets
+          description: Permanent magnets without rare-earth elements
+          keywords:
+            - rare-earth-free
+            - iron nitride
+            - Fe16N2
+            - MnAl
+            - MnBi
+            - alnico
+            - ferrite magnet
+        - name: Soft Magnetic Materials
+          slug: soft-magnetic-materials
+          description: Materials with low coercivity
+          keywords:
+            - soft magnet
+            - low coercivity
+            - high permeability
+            - transformer core
+            - amorphous
+            - nanocrystalline
+        - name: Spintronics
+          slug: spintronics
+          description: Spin-based electronics and devices
+          keywords:
+            - spintronics
+            - spin transfer
+            - spin orbit
+            - spin hall
+            - magnetic tunnel junction
+            - GMR
+            - TMR
+
+    # Energy Storage
+    - name: Energy Storage
+      slug: energy-storage
+      description: Materials for energy storage applications
+      keywords:
+        - battery
+        - energy storage
+        - electrochemical
+        - charge storage
+      children:
+        - name: Solid-State Batteries
+          slug: solid-state-batteries
+          description: All-solid-state battery technologies
+          keywords:
+            - solid state battery
+            - solid electrolyte
+            - garnet
+            - LLZO
+            - sulfide electrolyte
+            - polymer electrolyte
+            - all-solid-state
+        - name: Lithium-Ion Batteries
+          slug: lithium-ion-batteries
+          description: Conventional lithium-ion battery research
+          keywords:
+            - lithium ion
+            - Li-ion
+            - cathode material
+            - anode material
+            - NMC
+            - LFP
+            - graphite anode
+        - name: Supercapacitors
+          slug: supercapacitors
+          description: Electrochemical capacitor research
+          keywords:
+            - supercapacitor
+            - ultracapacitor
+            - EDLC
+            - pseudocapacitor
+            - carbon electrode
+        - name: Hydrogen Storage
+          slug: hydrogen-storage
+          description: Materials for hydrogen storage
+          keywords:
+            - hydrogen storage
+            - metal hydride
+            - MOF hydrogen
+            - hydrogen absorption
+
+    # Catalysis
+    - name: Catalysis
+      slug: catalysis
+      description: Catalytic materials and processes
+      keywords:
+        - catalyst
+        - catalysis
+        - catalytic
+        - reaction kinetics
+      children:
+        - name: Electrocatalysis
+          slug: electrocatalysis
+          description: Electrochemical catalysis
+          keywords:
+            - electrocatalyst
+            - OER
+            - ORR
+            - HER
+            - fuel cell catalyst
+            - water splitting
+        - name: Photocatalysis
+          slug: photocatalysis
+          description: Light-driven catalysis
+          keywords:
+            - photocatalyst
+            - photocatalysis
+            - TiO2
+            - solar fuel
+            - artificial photosynthesis
+        - name: Heterogeneous Catalysis
+          slug: heterogeneous-catalysis
+          description: Surface and supported catalysts
+          keywords:
+            - heterogeneous
+            - supported catalyst
+            - zeolite
+            - metal nanoparticle
+
+    # Thin Films & Coatings
+    - name: Thin Films & Coatings
+      slug: thin-films-coatings
+      description: Thin film deposition and coating technologies
+      keywords:
+        - thin film
+        - coating
+        - deposition
+        - surface treatment
+      children:
+        - name: Physical Vapor Deposition
+          slug: pvd
+          description: PVD techniques
+          keywords:
+            - PVD
+            - sputtering
+            - evaporation
+            - MBE
+            - pulsed laser deposition
+        - name: Chemical Vapor Deposition
+          slug: cvd
+          description: CVD techniques
+          keywords:
+            - CVD
+            - MOCVD
+            - ALD
+            - atomic layer
+            - plasma enhanced
+        - name: Protective Coatings
+          slug: protective-coatings
+          description: Wear and corrosion protection
+          keywords:
+            - wear resistant
+            - corrosion resistant
+            - hard coating
+            - thermal barrier
+
+    # Nanomaterials
+    - name: Nanomaterials
+      slug: nanomaterials
+      description: Materials at the nanoscale
+      keywords:
+        - nanomaterial
+        - nanostructure
+        - nanoscale
+        - nano
+      children:
+        - name: Nanoparticles
+          slug: nanoparticles
+          description: Zero-dimensional nanomaterials
+          keywords:
+            - nanoparticle
+            - quantum dot
+            - nanocrystal
+            - core-shell
+        - name: Nanowires & Nanotubes
+          slug: nanowires-nanotubes
+          description: One-dimensional nanomaterials
+          keywords:
+            - nanowire
+            - nanotube
+            - CNT
+            - carbon nanotube
+            - nanobelt
+        - name: 2D Materials
+          slug: 2d-materials
+          description: Two-dimensional materials
+          keywords:
+            - 2D material
+            - graphene
+            - MoS2
+            - transition metal dichalcogenide
+            - hexagonal boron nitride
+
+    # Characterization Methods
+    - name: Characterization
+      slug: characterization
+      description: Materials characterization techniques
+      keywords:
+        - characterization
+        - analysis
+        - measurement
+      children:
+        - name: Structural Characterization
+          slug: structural-characterization
+          description: Crystal structure and morphology
+          keywords:
+            - XRD
+            - X-ray diffraction
+            - neutron diffraction
+            - EBSD
+            - crystallography
+        - name: Microscopy
+          slug: microscopy
+          description: Imaging techniques
+          keywords:
+            - SEM
+            - TEM
+            - AFM
+            - STM
+            - electron microscopy
+            - atomic force
+        - name: Spectroscopy
+          slug: spectroscopy
+          description: Spectroscopic methods
+          keywords:
+            - XPS
+            - FTIR
+            - Raman
+            - NMR
+            - EELS
+            - spectroscopy
+        - name: Magnetic Characterization
+          slug: magnetic-characterization
+          description: Magnetic property measurement
+          keywords:
+            - SQUID
+            - VSM
+            - magnetometry
+            - BH loop
+            - hysteresis
+
+    # Computational Materials
+    - name: Computational Materials
+      slug: computational-materials
+      description: Simulation and modeling of materials
+      keywords:
+        - computational
+        - simulation
+        - modeling
+        - first principles
+      children:
+        - name: DFT & Ab Initio
+          slug: dft-ab-initio
+          description: First-principles calculations
+          keywords:
+            - DFT
+            - density functional
+            - ab initio
+            - VASP
+            - quantum espresso
+        - name: Molecular Dynamics
+          slug: molecular-dynamics
+          description: Atomistic simulations
+          keywords:
+            - molecular dynamics
+            - MD simulation
+            - LAMMPS
+            - force field
+        - name: Machine Learning
+          slug: ml-materials
+          description: ML for materials discovery
+          keywords:
+            - machine learning
+            - neural network
+            - materials informatics
+            - high-throughput
+            - CGCNN
+
+    # Synthesis & Processing
+    - name: Synthesis & Processing
+      slug: synthesis-processing
+      description: Materials synthesis and processing methods
+      keywords:
+        - synthesis
+        - processing
+        - fabrication
+        - manufacturing
+      children:
+        - name: Powder Processing
+          slug: powder-processing
+          description: Powder metallurgy and ceramics
+          keywords:
+            - powder
+            - sintering
+            - ball milling
+            - spark plasma sintering
+            - hot pressing
+        - name: Crystal Growth
+          slug: crystal-growth
+          description: Single crystal synthesis
+          keywords:
+            - crystal growth
+            - Czochralski
+            - Bridgman
+            - flux growth
+            - single crystal
+        - name: Additive Manufacturing
+          slug: additive-manufacturing
+          description: 3D printing of materials
+          keywords:
+            - additive manufacturing
+            - 3D printing
+            - selective laser melting
+            - powder bed fusion

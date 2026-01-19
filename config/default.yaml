@@ -1,0 +1,52 @@
+# HAL 9000 Default Configuration
+# Copy to ~/.hal9000.yaml or set HAL9000_ environment variables to override
+
+hal9000:
+  # Document sources
+  sources:
+    local_paths:
+      - ~/Documents/Research
+      - ~/Downloads/Papers
+    watch_mode: false
+
+  # Cloud storage
+  cloud:
+    gdrive:
+      enabled: false
+      credentials_path: null
+      folder_ids: []
+
+  # Obsidian integration
+  obsidian:
+    vault_path: ~/ObsidianVault/HAL9000Research
+    templates_path: ./templates/obsidian
+    create_canvas: true
+    auto_link: true
+
+  # ADAM Platform integration
+  adam:
+    enabled: true
+    output_path: ./adam_contexts
+    default_domain: materials_science
+    api_url: null
+    api_key: null
+
+  # Processing settings
+  processing:
+    chunk_size: 50000
+    max_concurrent_calls: 5
+    cache_enabled: true
+    cache_path: ./.hal9000_cache
+
+  # Taxonomy settings
+  taxonomy:
+    auto_extend: true
+    base_file: ./config/materials_science_taxonomy.yaml
+
+  # Database
+  database:
+    url: sqlite:///./hal9000.db
+
+  # Logging
+  log_level: INFO
+  verbose: false
