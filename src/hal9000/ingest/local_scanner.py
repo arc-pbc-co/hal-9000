@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import Iterator, List, Optional, Union
 
 from watchdog.events import FileSystemEventHandler, FileCreatedEvent, FileMovedEvent
 from watchdog.observers import Observer
@@ -41,9 +41,9 @@ class LocalScanner:
 
     def __init__(
         self,
-        paths: list[Path] | list[str],
+        paths: Union[List[Path], List[str]],
         recursive: bool = True,
-        extensions: list[str] | None = None,
+        extensions: Optional[List[str]] = None,
     ):
         """
         Initialize the scanner.
@@ -129,7 +129,7 @@ class PDFWatchHandler(FileSystemEventHandler):
     def __init__(
         self,
         callback,
-        extensions: list[str] | None = None,
+        extensions: Optional[List[str]] = None,
     ):
         """
         Initialize the watch handler.
@@ -174,7 +174,7 @@ class DirectoryWatcher:
 
     def __init__(
         self,
-        paths: list[Path] | list[str],
+        paths: Union[List[Path], List[str]],
         callback,
         recursive: bool = True,
     ):

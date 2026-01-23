@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ class VaultManager:
     and manages the knowledge graph.
     """
 
-    def __init__(self, vault_path: Path | str):
+    def __init__(self, vault_path: Union[Path, str]):
         """
         Initialize vault manager.
 
