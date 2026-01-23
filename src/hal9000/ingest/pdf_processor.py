@@ -167,8 +167,11 @@ class PDFProcessor:
             chunk = text[current_pos:end_pos]
             chunks.append(chunk.strip())
 
-            # Move position, accounting for overlap
-            current_pos = end_pos - overlap if end_pos < len(text) else end_pos
+            # Move position, accounting for overlap, but always make forward progress
+            if end_pos < len(text):
+                current_pos = max(end_pos - overlap, current_pos + 1)
+            else:
+                current_pos = end_pos
 
         return chunks
 

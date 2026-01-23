@@ -215,7 +215,7 @@ class DirectoryWatcher:
             return
 
         self.observer.stop()
-        self.observer.join()
+        self.observer.join(timeout=5.0)  # Timeout to prevent indefinite blocking
         self._running = False
         logger.info("Directory watcher stopped")
 

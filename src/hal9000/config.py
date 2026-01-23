@@ -99,6 +99,40 @@ class DatabaseConfig(BaseSettings):
     )
 
 
+class AcquisitionConfig(BaseSettings):
+    """Paper acquisition configuration."""
+
+    download_dir: str = Field(
+        default="~/Documents/Research/Acquired",
+        description="Directory for downloaded papers",
+    )
+    default_sources: list[str] = Field(
+        default_factory=lambda: ["semantic_scholar", "arxiv"],
+        description="Default search providers to use",
+    )
+    max_concurrent_downloads: int = Field(
+        default=3, description="Maximum concurrent downloads"
+    )
+    rate_limit_seconds: float = Field(
+        default=1.0, description="Minimum seconds between API requests"
+    )
+    semantic_scholar_api_key: Optional[str] = Field(
+        default=None, description="Semantic Scholar API key for higher rate limits"
+    )
+    unpaywall_email: Optional[str] = Field(
+        default=None, description="Email for Unpaywall API (required for OA resolution)"
+    )
+    auto_process: bool = Field(
+        default=True, description="Automatically process downloaded papers"
+    )
+    auto_generate_notes: bool = Field(
+        default=True, description="Automatically generate Obsidian notes"
+    )
+    relevance_threshold: float = Field(
+        default=0.5, description="Minimum relevance score for papers (0-1)"
+    )
+
+
 class Settings(BaseSettings):
     """Main HAL 9000 settings."""
 
@@ -118,6 +152,7 @@ class Settings(BaseSettings):
     processing: ProcessingConfig = Field(default_factory=ProcessingConfig)
     taxonomy: TaxonomyConfig = Field(default_factory=TaxonomyConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
+    acquisition: AcquisitionConfig = Field(default_factory=AcquisitionConfig)
 
     # Anthropic API configuration
     anthropic_api_key: Optional[str] = Field(
@@ -139,6 +174,10 @@ class Settings(BaseSettings):
     def get_cache_path(self) -> Path:
         """Get expanded cache path."""
         return Path(self.processing.cache_path).expanduser()
+
+    def get_acquisition_dir(self) -> Path:
+        """Get expanded acquisition download directory."""
+        return Path(self.acquisition.download_dir).expanduser()
 
 
 def load_settings(config_file: Optional[Path] = None) -> Settings:

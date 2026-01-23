@@ -18,6 +18,106 @@ hal [OPTIONS] COMMAND [ARGS]
 
 ## Commands
 
+### `hal acquire`
+
+Search for and download research papers on a topic.
+
+```bash
+hal acquire [OPTIONS] TOPIC
+```
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `TOPIC` | Research topic to search for papers on (required) |
+
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-n, --max-papers` | `20` | Maximum papers to acquire |
+| `-s, --sources` | `semantic_scholar,arxiv` | Comma-separated list of sources |
+| `--no-process` | - | Skip RLM processing after download |
+| `--no-notes` | - | Skip Obsidian note generation |
+| `-o, --output-dir PATH` | Config default | Override download directory |
+| `--dry-run` | - | Search only, don't download |
+| `-t, --threshold` | `0.5` | Minimum relevance score (0-1) |
+
+**Examples:**
+
+```bash
+# Search and download papers on a topic
+hal acquire "nickel superalloys creep resistance"
+
+# Download more papers with higher relevance threshold
+hal acquire "battery cathode materials" --max-papers 50 --threshold 0.7
+
+# Search arXiv only (dry run to preview results)
+hal acquire "machine learning" --sources arxiv --dry-run
+
+# Download without processing
+hal acquire "rare earth magnets" --no-process --no-notes
+
+# Custom output directory
+hal acquire "solid state batteries" -o ~/Research/SSB
+```
+
+**Dry Run Output:**
+
+```
+Dry run mode - searching but not downloading
+
+Papers Found (15)
+┏━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━┳━━━━━━━━━━━━━━┳━━━━━┳━━━━━━━┓
+┃ # ┃ Title                                      ┃ Year ┃ Source       ┃ PDF ┃ Score ┃
+┡━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━╇━━━━━━━━━━━━━━╇━━━━━╇━━━━━━━┩
+│ 1 │ High-Temperature Creep of Ni Superalloys   │ 2024 │ semantic_sch │ Yes │ 0.92  │
+│ 2 │ Microstructure Evolution in MAR-M 247...   │ 2023 │ arxiv        │ Yes │ 0.87  │
+│ 3 │ Single Crystal Growth of Ni-Based...       │ 2024 │ semantic_sch │ Yes │ 0.85  │
+└───┴────────────────────────────────────────────┴──────┴──────────────┴─────┴───────┘
+
+Use without --dry-run to download these papers
+```
+
+**Full Acquisition Output:**
+
+```
+Acquiring papers on: nickel superalloys creep resistance
+
+⠋ Searching for papers...
+  Found 23 relevant papers
+⠋ Resolving PDF URLs...
+  Resolved 5 additional URLs via Unpaywall
+⠋ Downloading [1/20]: High-Temperature_Creep_of_Ni...
+⠋ Downloading [2/20]: Microstructure_Evolution_in...
+...
+⠋ Processing [1/15]: High-Temperature_Creep_of_Ni...
+...
+
+Acquisition complete!
+
+┏━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┓
+┃ Metric               ┃ Value ┃
+┡━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━┩
+│ Papers Found         │ 23    │
+│ Papers Downloaded    │ 15    │
+│ Papers Processed     │ 15    │
+│ Duplicates Skipped   │ 3     │
+│ Download Failures    │ 2     │
+└──────────────────────┴───────┘
+
+Session log saved to: ~/Documents/Research/Acquired/nickel-superalloys/session_log.json
+```
+
+**Data Sources:**
+
+- **Semantic Scholar**: Comprehensive academic database with citation data
+- **arXiv**: Preprint server for physics, math, CS, and more
+- **Unpaywall**: Resolves DOIs to open access PDF URLs
+
+---
+
 ### `hal scan`
 
 Scan directories for PDF files without processing them.

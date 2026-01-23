@@ -25,6 +25,7 @@ Welcome to the HAL 9000 documentation. HAL 9000 is an AI-powered research assist
 
 | Module | Description |
 |--------|-------------|
+| [acquisition](api/acquisition.md) | Paper search, download, and validation |
 | [config](api/config.md) | Configuration management |
 | [ingest](api/ingest.md) | PDF scanning and processing |
 | [rlm](api/rlm.md) | Recursive Language Model processing |
@@ -48,6 +49,11 @@ Welcome to the HAL 9000 documentation. HAL 9000 is an AI-powered research assist
 HAL 9000 implements patterns from the Recursive Language Models (RLM) paper to intelligently process large documents:
 
 ```
+                        ┌──────────────────┐
+                        │  Paper Acquire   │
+                        │ (Search & Download)
+                        └────────┬─────────┘
+                                 ↓
 PDF Input → Chunking → RLM Processing → Classification → Obsidian Notes
                                     ↓
                             ADAM Context Generation
@@ -55,6 +61,7 @@ PDF Input → Chunking → RLM Processing → Classification → Obsidian Notes
 
 ### Key Features
 
+- **Paper Acquisition**: Search and download papers from Semantic Scholar, arXiv, and Unpaywall with Claude-powered query expansion
 - **Intelligent PDF Processing**: Extract text, metadata, and structure from research papers
 - **RLM Analysis**: Use Claude to analyze documents with recursive chunking and aggregation
 - **Topic Classification**: Automatically categorize papers using a Materials Science taxonomy

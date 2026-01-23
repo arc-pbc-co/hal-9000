@@ -87,6 +87,10 @@ class Document(Base):
     # ADAM context
     adam_context_id: Mapped[Optional[str]] = mapped_column(String(36))
 
+    # Acquisition metadata
+    acquisition_source: Mapped[Optional[str]] = mapped_column(String(50))  # Provider name
+    acquisition_query: Mapped[Optional[str]] = mapped_column(String(512))  # Original search topic
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -199,6 +203,55 @@ class ADAMContext(Base):
 
     def __repr__(self) -> str:
         return f"<ADAMContext(id={self.id}, name={self.name})>"
+
+
+class AcquisitionRecord(Base):
+    """Tracks paper acquisition attempts and status."""
+
+    __tablename__ = "acquisition_records"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+
+    # Search metadata
+    search_topic: Mapped[str] = mapped_column(String(512), nullable=False)
+    search_query: Mapped[Optional[str]] = mapped_column(Text)  # Expanded query used
+    session_id: Mapped[Optional[str]] = mapped_column(String(36))  # Links records from same session
+    provider: Mapped[str] = mapped_column(String(50), nullable=False)
+
+    # Paper identification
+    title: Mapped[Optional[str]] = mapped_column(String(512))
+    external_id: Mapped[Optional[str]] = mapped_column(String(256))  # Provider's ID
+    doi: Mapped[Optional[str]] = mapped_column(String(256))
+    arxiv_id: Mapped[Optional[str]] = mapped_column(String(50))
+
+    # Download status
+    status: Mapped[str] = mapped_column(String(50), default="pending")
+    # Status values: pending, searching, downloading, downloaded, processing, completed, failed, duplicate
+
+    source_url: Mapped[Optional[str]] = mapped_column(String(1024))
+    local_path: Mapped[Optional[str]] = mapped_column(String(1024))
+    file_hash: Mapped[Optional[str]] = mapped_column(String(64))
+
+    # Relevance scoring
+    relevance_score: Mapped[Optional[float]] = mapped_column(Float)
+
+    # Link to processed document
+    document_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("documents.id"))
+
+    # Error tracking
+    error_message: Mapped[Optional[str]] = mapped_column(Text)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    downloaded_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+    # Relationship
+    document: Mapped[Optional["Document"]] = relationship("Document", backref="acquisition_record")
+
+    def __repr__(self) -> str:
+        return f"<AcquisitionRecord(id={self.id}, topic={self.search_topic[:30]}, status={self.status})>"
 
 
 # Convenience alias for backwards compatibility

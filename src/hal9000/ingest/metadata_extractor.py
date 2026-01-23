@@ -60,7 +60,7 @@ class MetadataExtractor:
     ARXIV_PATTERN = re.compile(
         r"arXiv[:\s]*(\d{4}\.\d{4,5}(?:v\d+)?)", re.IGNORECASE
     )
-    YEAR_PATTERN = re.compile(r"\b(19|20)\d{2}\b")
+    YEAR_PATTERN = re.compile(r"\b((?:19|20)\d{2})\b")
 
     def extract(
         self, text: str, pdf_metadata: Optional[dict] = None
@@ -250,8 +250,8 @@ class MetadataExtractor:
 
     def _parse_authors(self, author_string: str) -> list[str]:
         """Parse an author string into individual names."""
-        # Clean up
-        author_string = re.sub(r"\d+", "", author_string)  # Remove superscripts
+        # Clean up - remove ASCII digits and Unicode superscripts
+        author_string = re.sub(r"[\d¹²³⁴⁵⁶⁷⁸⁹⁰]+", "", author_string)
         author_string = re.sub(r"[*†‡§¶]", "", author_string)  # Remove symbols
         author_string = re.sub(r"\s+", " ", author_string)
 

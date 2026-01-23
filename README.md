@@ -5,6 +5,7 @@ An AI-powered research assistant built on Claude Code that processes PDFs, organ
 ## Features
 
 - **PDF Ingestion**: Scan local directories and cloud storage for research papers
+- **Paper Acquisition**: Search and download papers from Semantic Scholar, arXiv, and Unpaywall
 - **RLM Processing**: Intelligent document analysis using Recursive Language Model patterns
 - **Topic Classification**: Automatic categorization using a Materials Science taxonomy
 - **Obsidian Integration**: Generate linked notes and mind maps
@@ -47,6 +48,9 @@ hal init-vault
 # Scan directories for PDFs
 hal scan ~/Documents/Research
 
+# Acquire papers on a research topic
+hal acquire "nickel superalloys creep resistance" --max-papers 20
+
 # Process a single PDF
 hal process paper.pdf
 
@@ -58,6 +62,15 @@ hal status
 ```
 
 ## CLI Commands
+
+### `hal acquire <TOPIC>`
+Search and download papers on a research topic.
+
+```bash
+hal acquire "battery cathode materials" --max-papers 50
+hal acquire "machine learning" --sources arxiv --dry-run
+hal acquire "nickel superalloys" --threshold 0.7  # Higher relevance threshold
+```
 
 ### `hal scan [PATHS]`
 Scan directories for PDF files.
@@ -109,6 +122,11 @@ HAL 9000 implements patterns from the Recursive Language Models (RLM) paper:
 3. **Aggregation**: Results from chunks are intelligently merged
 
 ```
+                        ┌──────────────────┐
+                        │  Paper Acquire   │
+                        │ (Search & Download)
+                        └────────┬─────────┘
+                                 ↓
 PDF Input → Chunking → RLM Processing → Classification → Obsidian Notes
                                     ↓
                             ADAM Context Generation
@@ -121,6 +139,7 @@ hal-9000/
 ├── src/hal9000/
 │   ├── cli.py              # Command-line interface
 │   ├── config.py           # Configuration management
+│   ├── acquisition/        # Paper search and download
 │   ├── ingest/             # PDF processing and scanning
 │   ├── rlm/                # RLM processing engine
 │   ├── categorize/         # Topic classification

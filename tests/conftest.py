@@ -3,6 +3,7 @@
 import tempfile
 from pathlib import Path
 from typing import Generator
+from unittest.mock import patch
 
 import pytest
 
@@ -205,3 +206,23 @@ def mock_document_analysis():
         chunks_processed=3,
         total_chunks=3,
     )
+
+
+@pytest.fixture(autouse=True)
+def fast_async_sleep(monkeypatch):
+    """Replace asyncio.sleep with a fast version for tests.
+
+    This prevents rate limiting and retry backoff from slowing down tests.
+    """
+    import asyncio
+
+    original_sleep = asyncio.sleep
+
+    async def fast_sleep(delay):
+        """Sleep for max 0.01 seconds regardless of requested delay."""
+        if delay > 0.01:
+            await original_sleep(0.01)
+        else:
+            await original_sleep(delay)
+
+    monkeypatch.setattr(asyncio, "sleep", fast_sleep)

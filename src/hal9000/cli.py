@@ -327,6 +327,258 @@ def batch(
 
 
 @cli.command()
+@click.argument("topic")
+@click.option("--max-papers", "-n", default=20, help="Maximum papers to acquire")
+@click.option(
+    "--sources",
+    "-s",
+    default="semantic_scholar,arxiv",
+    help="Comma-separated list of sources (semantic_scholar, arxiv)",
+)
+@click.option("--no-process", is_flag=True, help="Skip RLM processing after download")
+@click.option("--no-notes", is_flag=True, help="Skip Obsidian note generation")
+@click.option("--output-dir", "-o", type=click.Path(path_type=Path), help="Override download directory")
+@click.option("--dry-run", is_flag=True, help="Search only, don't download")
+@click.option("--threshold", "-t", default=0.5, help="Minimum relevance score (0-1)")
+@click.pass_context
+def acquire(
+    ctx: click.Context,
+    topic: str,
+    max_papers: int,
+    sources: str,
+    no_process: bool,
+    no_notes: bool,
+    output_dir: Optional[Path],
+    dry_run: bool,
+    threshold: float,
+) -> None:
+    """Acquire research papers on a topic.
+
+    TOPIC: Research topic to search for papers on
+
+    \b
+    Examples:
+        hal acquire "nickel superalloys creep resistance"
+        hal acquire "battery cathode materials" --max-papers 50
+        hal acquire "machine learning" --sources arxiv --dry-run
+    """
+    import asyncio
+    from hal9000.config import get_settings
+    from hal9000.db.models import init_db
+
+    settings = get_settings()
+
+    # Override download dir if specified
+    if output_dir:
+        settings.acquisition.download_dir = str(output_dir)
+
+    console.print(f"[bold]Acquiring papers on: {topic}[/bold]\n")
+
+    # Initialize database
+    engine, SessionLocal = init_db(settings.database.url)
+    session = SessionLocal()
+
+    # Import acquisition components
+    from hal9000.acquisition import AcquisitionOrchestrator
+    from hal9000.ingest import PDFProcessor
+    from hal9000.rlm import RLMProcessor
+    from hal9000.obsidian import VaultManager
+
+    # Initialize processors if processing is enabled
+    pdf_processor = None
+    rlm_processor = None
+    vault_manager = None
+
+    if not no_process:
+        pdf_processor = PDFProcessor()
+        rlm_processor = RLMProcessor()
+
+    if not no_notes:
+        vault_manager = VaultManager(settings.obsidian.vault_path)
+        vault_manager.initialize()
+
+    # Create orchestrator
+    orchestrator = AcquisitionOrchestrator(
+        settings=settings,
+        db_session=session,
+        pdf_processor=pdf_processor,
+        rlm_processor=rlm_processor,
+        vault_manager=vault_manager,
+    )
+
+    async def run_acquisition():
+        if dry_run:
+            # Dry run - just search and show results
+            console.print("[yellow]Dry run mode - searching but not downloading[/yellow]\n")
+
+            results = await orchestrator.acquire_dry_run(
+                topic=topic,
+                max_papers=max_papers,
+                relevance_threshold=threshold,
+            )
+
+            if not results:
+                console.print("[yellow]No papers found matching the topic.[/yellow]")
+                return
+
+            # Display results
+            table = Table(title=f"Papers Found ({len(results)})")
+            table.add_column("#", style="dim", width=3)
+            table.add_column("Title", style="cyan", max_width=50)
+            table.add_column("Year", style="green", width=6)
+            table.add_column("Source", style="magenta", width=12)
+            table.add_column("PDF", style="green", width=4)
+            table.add_column("Score", style="yellow", width=5)
+
+            for i, result in enumerate(results[:max_papers], 1):
+                title = result.title[:47] + "..." if len(result.title) > 50 else result.title
+                year = str(result.year) if result.year else "-"
+                has_pdf = "[green]Yes[/green]" if result.pdf_url else "[red]No[/red]"
+                score = f"{result.relevance_score:.2f}"
+                table.add_row(str(i), title, year, result.source, has_pdf, score)
+
+            console.print(table)
+            console.print(f"\n[dim]Use without --dry-run to download these papers[/dim]")
+
+        else:
+            # Full acquisition
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                current_task = None
+
+                def progress_callback(stage: str, current: int, total: int):
+                    nonlocal current_task
+                    if current_task:
+                        progress.update(current_task, completed=True)
+                    current_task = progress.add_task(
+                        f"{stage} [{current}/{total}]...", total=None
+                    )
+
+                result = await orchestrator.acquire(
+                    topic=topic,
+                    max_papers=max_papers,
+                    process_papers=not no_process,
+                    generate_notes=not no_notes,
+                    relevance_threshold=threshold,
+                    progress_callback=progress_callback,
+                )
+
+                if current_task:
+                    progress.update(current_task, completed=True)
+
+            # Display summary
+            console.print("\n[bold green]Acquisition Complete![/bold green]\n")
+
+            table = Table(title="Summary")
+            table.add_column("Metric", style="cyan")
+            table.add_column("Value", style="green")
+
+            table.add_row("Papers Found", str(result.papers_found))
+            table.add_row("Papers Downloaded", str(result.papers_downloaded))
+            table.add_row("Papers Processed", str(result.papers_processed))
+            table.add_row("Duplicates Skipped", str(result.duplicates_skipped))
+            table.add_row("Download Failures", str(result.download_failures))
+            table.add_row("Session Directory", str(result.session_dir))
+
+            console.print(table)
+
+            if result.errors:
+                console.print("\n[yellow]Errors encountered:[/yellow]")
+                for error in result.errors[:5]:
+                    console.print(f"  - {error}")
+
+    # Run the async acquisition
+    asyncio.run(run_acquisition())
+
+    session.close()
+
+
+@cli.command()
+@click.option("--topic", "-t", help="Filter by search topic")
+@click.option("--status", "-s", help="Filter by status (pending, completed, failed)")
+@click.option("--limit", "-n", default=20, help="Maximum records to show")
+@click.pass_context
+def acquisitions(
+    ctx: click.Context,
+    topic: Optional[str],
+    status: Optional[str],
+    limit: int,
+) -> None:
+    """List paper acquisition records.
+
+    Shows history of paper acquisition sessions and their status.
+    """
+    from hal9000.config import get_settings
+    from hal9000.db.models import init_db, AcquisitionRecord
+
+    settings = get_settings()
+
+    # Initialize database
+    engine, SessionLocal = init_db(settings.database.url)
+    session = SessionLocal()
+
+    try:
+        # Build query
+        query = session.query(AcquisitionRecord)
+
+        if topic:
+            query = query.filter(AcquisitionRecord.search_topic.contains(topic))
+
+        if status:
+            query = query.filter(AcquisitionRecord.status == status)
+
+        # Order by most recent first
+        query = query.order_by(AcquisitionRecord.created_at.desc())
+
+        records = query.limit(limit).all()
+
+        if not records:
+            console.print("[yellow]No acquisition records found.[/yellow]")
+            return
+
+        # Display table
+        table = Table(title=f"Acquisition Records ({len(records)})")
+        table.add_column("ID", style="dim", width=8)
+        table.add_column("Topic", style="cyan", max_width=30)
+        table.add_column("Title", style="white", max_width=35)
+        table.add_column("Status", style="magenta", width=12)
+        table.add_column("Source", style="green", width=10)
+        table.add_column("Date", style="dim", width=12)
+
+        for record in records:
+            record_id = record.id[:8]
+            topic_text = record.search_topic[:27] + "..." if len(record.search_topic) > 30 else record.search_topic
+            title = (record.title[:32] + "...") if record.title and len(record.title) > 35 else (record.title or "-")
+            date = record.created_at.strftime("%Y-%m-%d")
+
+            # Color status
+            status_text = record.status
+            if record.status == "completed":
+                status_text = f"[green]{record.status}[/green]"
+            elif record.status == "failed":
+                status_text = f"[red]{record.status}[/red]"
+            elif record.status == "duplicate":
+                status_text = f"[yellow]{record.status}[/yellow]"
+
+            table.add_row(record_id, topic_text, title, status_text, record.provider, date)
+
+        console.print(table)
+
+        # Summary stats
+        total = session.query(AcquisitionRecord).count()
+        completed = session.query(AcquisitionRecord).filter(AcquisitionRecord.status == "completed").count()
+        failed = session.query(AcquisitionRecord).filter(AcquisitionRecord.status == "failed").count()
+
+        console.print(f"\n[dim]Total: {total} | Completed: {completed} | Failed: {failed}[/dim]")
+
+    finally:
+        session.close()
+
+
+@cli.command()
 @click.option("--vault-path", type=click.Path(path_type=Path), help="Override vault path")
 @click.pass_context
 def init_vault(ctx: click.Context, vault_path: Optional[Path]) -> None:
