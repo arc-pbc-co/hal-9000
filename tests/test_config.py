@@ -15,6 +15,7 @@ from hal9000.config import (
     ProcessingConfig,
     TaxonomyConfig,
     DatabaseConfig,
+    GatewayConfig,
     load_settings,
     get_settings,
 )
@@ -190,6 +191,33 @@ class TestDatabaseConfig:
         assert "postgresql" in config.url
 
 
+class TestGatewayConfig:
+    """Tests for GatewayConfig."""
+
+    def test_default_values(self):
+        """Test default values."""
+        config = GatewayConfig()
+
+        assert config.host == "127.0.0.1"
+        assert config.port == 9000
+        assert config.max_connections == 100
+        assert config.session_timeout_minutes == 60
+
+    def test_custom_values(self):
+        """Test custom values."""
+        config = GatewayConfig(
+            host="0.0.0.0",
+            port=8080,
+            max_connections=50,
+            session_timeout_minutes=30
+        )
+
+        assert config.host == "0.0.0.0"
+        assert config.port == 8080
+        assert config.max_connections == 50
+        assert config.session_timeout_minutes == 30
+
+
 class TestSettings:
     """Tests for main Settings class."""
 
@@ -204,6 +232,7 @@ class TestSettings:
         assert isinstance(settings.processing, ProcessingConfig)
         assert isinstance(settings.taxonomy, TaxonomyConfig)
         assert isinstance(settings.database, DatabaseConfig)
+        assert isinstance(settings.gateway, GatewayConfig)
         assert settings.log_level == "INFO"
         assert settings.verbose is False
 
@@ -357,3 +386,19 @@ class TestEnvironmentVariables:
         settings = Settings()
 
         assert settings.anthropic_api_key == "test-api-key"
+
+    def test_env_var_gateway_host(self, monkeypatch):
+        """Test gateway host from environment."""
+        monkeypatch.setenv("HAL9000_GATEWAY__HOST", "0.0.0.0")
+
+        settings = Settings()
+
+        assert settings.gateway.host == "0.0.0.0"
+
+    def test_env_var_gateway_port(self, monkeypatch):
+        """Test gateway port from environment."""
+        monkeypatch.setenv("HAL9000_GATEWAY__PORT", "8080")
+
+        settings = Settings()
+
+        assert settings.gateway.port == 8080

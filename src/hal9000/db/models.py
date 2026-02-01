@@ -1,8 +1,8 @@
 """Database models for HAL 9000."""
 
+import uuid
 from datetime import datetime
 from typing import Optional
-import uuid
 
 from sqlalchemy import (
     Boolean,
@@ -16,7 +16,7 @@ from sqlalchemy import (
     Text,
     create_engine,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, Session
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
@@ -205,6 +205,32 @@ class ADAMContext(Base):
         return f"<ADAMContext(id={self.id}, name={self.name})>"
 
 
+class GatewaySession(Base):
+    """Persisted gateway session for session continuity across restarts."""
+
+    __tablename__ = "gateway_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+
+    # Session metadata
+    channel: Mapped[str] = mapped_column(String(50), default="websocket")
+    user_id: Mapped[Optional[str]] = mapped_column(String(256))
+
+    # Session state (JSON fields)
+    context: Mapped[Optional[str]] = mapped_column(Text)  # JSON: ResearchContext
+    conversation_history: Mapped[Optional[str]] = mapped_column(Text)  # JSON list
+    active_tools: Mapped[Optional[str]] = mapped_column(Text)  # JSON list
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    last_active: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    def __repr__(self) -> str:
+        return f"<GatewaySession(id={self.id}, channel={self.channel})>"
+
+
 class AcquisitionRecord(Base):
     """Tracks paper acquisition attempts and status."""
 
@@ -264,12 +290,12 @@ def init_db(database_url: str = "sqlite:///./hal9000.db") -> tuple:
 
     engine = create_engine(database_url, echo=False)
     Base.metadata.create_all(engine)
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    session_factory = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-    return engine, SessionLocal
+    return engine, session_factory
 
 
 def get_session(database_url: str = "sqlite:///./hal9000.db") -> Session:
     """Get a new database session."""
-    _, SessionLocal = init_db(database_url)
-    return SessionLocal()
+    _, session_factory = init_db(database_url)
+    return session_factory()  # type: ignore[no-any-return]

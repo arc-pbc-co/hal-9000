@@ -95,14 +95,15 @@ def process(
 
     PDF_PATH: Path to the PDF file to process
     """
-    from hal9000.config import get_settings
-    from hal9000.ingest import PDFProcessor, MetadataExtractor
-    from hal9000.rlm import RLMProcessor
-    from hal9000.categorize import Taxonomy, Classifier
-    from hal9000.categorize.taxonomy import create_materials_science_taxonomy
-    from hal9000.obsidian import VaultManager, NoteGenerator
-    from hal9000.db.models import Document, init_db
     import json
+
+    from hal9000.categorize import Classifier
+    from hal9000.categorize.taxonomy import create_materials_science_taxonomy
+    from hal9000.config import get_settings
+    from hal9000.db.models import Document, init_db
+    from hal9000.ingest import MetadataExtractor, PDFProcessor
+    from hal9000.obsidian import NoteGenerator, VaultManager
+    from hal9000.rlm import RLMProcessor
 
     settings = get_settings()
 
@@ -222,12 +223,12 @@ def batch(
 
     PATHS: Directories containing PDFs to process
     """
-    from hal9000.config import get_settings
-    from hal9000.ingest import LocalScanner, PDFProcessor, MetadataExtractor
-    from hal9000.rlm import RLMProcessor
-    from hal9000.categorize.taxonomy import create_materials_science_taxonomy
-    from hal9000.categorize import Classifier
     from hal9000.adam import ContextBuilder
+    from hal9000.categorize import Classifier
+    from hal9000.categorize.taxonomy import create_materials_science_taxonomy
+    from hal9000.config import get_settings
+    from hal9000.ingest import LocalScanner, MetadataExtractor, PDFProcessor
+    from hal9000.rlm import RLMProcessor
 
     settings = get_settings()
 
@@ -363,6 +364,7 @@ def acquire(
         hal acquire "machine learning" --sources arxiv --dry-run
     """
     import asyncio
+
     from hal9000.config import get_settings
     from hal9000.db.models import init_db
 
@@ -381,8 +383,8 @@ def acquire(
     # Import acquisition components
     from hal9000.acquisition import AcquisitionOrchestrator
     from hal9000.ingest import PDFProcessor
-    from hal9000.rlm import RLMProcessor
     from hal9000.obsidian import VaultManager
+    from hal9000.rlm import RLMProcessor
 
     # Initialize processors if processing is enabled
     pdf_processor = None
@@ -438,7 +440,7 @@ def acquire(
                 table.add_row(str(i), title, year, result.source, has_pdf, score)
 
             console.print(table)
-            console.print(f"\n[dim]Use without --dry-run to download these papers[/dim]")
+            console.print("\n[dim]Use without --dry-run to download these papers[/dim]")
 
         else:
             # Full acquisition
@@ -512,7 +514,7 @@ def acquisitions(
     Shows history of paper acquisition sessions and their status.
     """
     from hal9000.config import get_settings
-    from hal9000.db.models import init_db, AcquisitionRecord
+    from hal9000.db.models import AcquisitionRecord, init_db
 
     settings = get_settings()
 
@@ -596,7 +598,7 @@ def init_vault(ctx: click.Context, vault_path: Optional[Path]) -> None:
 
     stats = vault.get_vault_stats()
 
-    console.print(f"[green]Vault initialized successfully![/green]")
+    console.print("[green]Vault initialized successfully![/green]")
     console.print(f"  Papers folder: {vault.config.papers_folder}")
     console.print(f"  Concepts folder: {vault.config.concepts_folder}")
     console.print(f"  Topics folder: {vault.config.topics_folder}")
@@ -607,7 +609,7 @@ def init_vault(ctx: click.Context, vault_path: Optional[Path]) -> None:
 def status(ctx: click.Context) -> None:
     """Show HAL 9000 status and statistics."""
     from hal9000.config import get_settings
-    from hal9000.db.models import init_db, Document
+    from hal9000.db.models import Document, init_db
     from hal9000.obsidian import VaultManager
 
     settings = get_settings()
@@ -666,6 +668,60 @@ def version(ctx: click.Context) -> None:
     from hal9000 import __version__
 
     console.print(f"HAL 9000 v{__version__}")
+
+
+# Gateway command group
+@cli.group()
+@click.pass_context
+def gateway(ctx: click.Context) -> None:
+    """Gateway server commands.
+
+    Start and manage the WebSocket gateway server for real-time communication.
+    """
+    pass
+
+
+@gateway.command("start")
+@click.option("--host", "-h", default="127.0.0.1", help="Host address to bind to")
+@click.option("--port", "-p", default=9000, type=int, help="Port number to listen on")
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging")
+@click.pass_context
+def gateway_start(ctx: click.Context, host: str, port: int, verbose: bool) -> None:
+    """Start the WebSocket gateway server.
+
+    The gateway server enables real-time communication with HAL-9000
+    through WebSocket connections.
+
+    \b
+    Examples:
+        hal gateway start
+        hal gateway start --port 8080
+        hal gateway start --host 0.0.0.0 --port 9000 --verbose
+    """
+    import asyncio
+
+    from hal9000.gateway import HALGateway
+
+    if verbose:
+        setup_logging(verbose=True)
+
+    # Show startup banner
+    console.print("\n[bold blue]╔═══════════════════════════════════════════════════╗[/bold blue]")
+    console.print("[bold blue]║[/bold blue]            [bold white]HAL-9000 Gateway Server[/bold white]               [bold blue]║[/bold blue]")
+    console.print("[bold blue]╚═══════════════════════════════════════════════════╝[/bold blue]\n")
+
+    console.print(f"[cyan]Starting server on[/cyan] [bold]ws://{host}:{port}[/bold]\n")
+    console.print("[dim]Press Ctrl+C to stop the server[/dim]\n")
+
+    # Create and run gateway
+    gateway_server = HALGateway(host=host, port=port)
+
+    try:
+        asyncio.run(gateway_server.run_forever())
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Shutdown requested...[/yellow]")
+
+    console.print("[green]Gateway server stopped.[/green]")
 
 
 def main() -> None:

@@ -133,6 +133,23 @@ class AcquisitionConfig(BaseSettings):
     )
 
 
+class GatewayConfig(BaseSettings):
+    """Gateway WebSocket server configuration."""
+
+    host: str = Field(
+        default="127.0.0.1", description="Host address to bind to"
+    )
+    port: int = Field(
+        default=9000, description="Port number to listen on"
+    )
+    max_connections: int = Field(
+        default=100, description="Maximum concurrent connections"
+    )
+    session_timeout_minutes: int = Field(
+        default=60, description="Session timeout in minutes (0 = no timeout)"
+    )
+
+
 class Settings(BaseSettings):
     """Main HAL 9000 settings."""
 
@@ -153,6 +170,7 @@ class Settings(BaseSettings):
     taxonomy: TaxonomyConfig = Field(default_factory=TaxonomyConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     acquisition: AcquisitionConfig = Field(default_factory=AcquisitionConfig)
+    gateway: GatewayConfig = Field(default_factory=GatewayConfig)
 
     # Anthropic API configuration
     anthropic_api_key: Optional[str] = Field(
