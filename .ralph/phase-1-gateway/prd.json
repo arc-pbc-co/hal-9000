@@ -157,8 +157,8 @@
         "Unit tests pass"
       ],
       "priority": 9,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented with GatewaySession model, PersistentSessionManager class, and 22 unit tests"
     },
     {
       "id": "P1-010",

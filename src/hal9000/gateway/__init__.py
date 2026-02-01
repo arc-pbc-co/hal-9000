@@ -11,6 +11,7 @@ from hal9000.gateway.health import (
     get_health_checker,
     health_handler,
 )
+from hal9000.gateway.persistence import PersistentSessionManager
 from hal9000.gateway.protocol import (
     ADAMPromptPayload,
     GatewayMessage,
@@ -36,6 +37,7 @@ __all__ = [
     "ResearchContext",
     "Session",
     "SessionManager",
+    "PersistentSessionManager",
     "EventType",
     "GatewayEvent",
     "EventEmitter",
