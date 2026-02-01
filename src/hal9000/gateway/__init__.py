@@ -6,6 +6,11 @@ from hal9000.gateway.events import (
     GatewayEvent,
     Subscription,
 )
+from hal9000.gateway.health import (
+    HealthChecker,
+    get_health_checker,
+    health_handler,
+)
 from hal9000.gateway.protocol import (
     ADAMPromptPayload,
     GatewayMessage,
@@ -39,5 +44,8 @@ __all__ = [
     "create_router_with_defaults",
     "echo_handler",
     "streaming_handler",
+    "health_handler",
+    "HealthChecker",
+    "get_health_checker",
     "HALGateway",
 ]

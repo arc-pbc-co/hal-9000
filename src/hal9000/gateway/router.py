@@ -8,6 +8,7 @@ import logging
 from collections.abc import AsyncGenerator, Callable
 from typing import Optional
 
+from hal9000.gateway.health import health_handler
 from hal9000.gateway.protocol import GatewayMessage, MessageType
 from hal9000.gateway.session import Session
 
@@ -190,7 +191,7 @@ def create_router_with_defaults() -> Router:
     """
     router = Router()
 
-    # Register echo handler for queries (useful for testing)
-    router.register(MessageType.QUERY, echo_handler)
+    # Register health handler for queries (supports health checks and echo fallback)
+    router.register(MessageType.QUERY, health_handler)
 
     return router

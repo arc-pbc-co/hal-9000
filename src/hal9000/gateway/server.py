@@ -14,6 +14,7 @@ from typing import Any, Optional, Union
 import websockets
 
 from hal9000.gateway.events import EventEmitter, EventType
+from hal9000.gateway.health import get_health_checker
 from hal9000.gateway.protocol import GatewayMessage
 from hal9000.gateway.router import Router, create_router_with_defaults
 from hal9000.gateway.session import Session, SessionManager
@@ -57,6 +58,9 @@ class HALGateway:
         self._started_at: Optional[datetime] = None
         self._shutdown_event = asyncio.Event()
         self._connections: dict[str, WebSocketConnection] = {}
+
+        # Set gateway reference on health checker
+        get_health_checker().set_gateway(self)
 
     @property
     def uptime_seconds(self) -> float:
