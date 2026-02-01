@@ -11,6 +11,12 @@ from hal9000.gateway.protocol import (
     GatewayMessage,
     MessageType,
 )
+from hal9000.gateway.router import (
+    Router,
+    create_router_with_defaults,
+    echo_handler,
+    streaming_handler,
+)
 from hal9000.gateway.session import (
     ResearchContext,
     Session,
@@ -28,4 +34,8 @@ __all__ = [
     "GatewayEvent",
     "EventEmitter",
     "Subscription",
+    "Router",
+    "create_router_with_defaults",
+    "echo_handler",
+    "streaming_handler",
 ]
