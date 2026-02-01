@@ -17,6 +17,7 @@ from hal9000.gateway.router import (
     echo_handler,
     streaming_handler,
 )
+from hal9000.gateway.server import HALGateway
 from hal9000.gateway.session import (
     ResearchContext,
     Session,
@@ -38,4 +39,5 @@ __all__ = [
     "create_router_with_defaults",
     "echo_handler",
     "streaming_handler",
+    "HALGateway",
 ]
