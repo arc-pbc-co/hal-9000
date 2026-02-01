@@ -5,9 +5,17 @@ from hal9000.gateway.protocol import (
     GatewayMessage,
     MessageType,
 )
+from hal9000.gateway.session import (
+    ResearchContext,
+    Session,
+    SessionManager,
+)
 
 __all__ = [
     "MessageType",
     "GatewayMessage",
     "ADAMPromptPayload",
+    "ResearchContext",
+    "Session",
+    "SessionManager",
 ]
