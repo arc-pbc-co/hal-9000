@@ -1,5 +1,11 @@
 """Gateway module for HAL-9000 WebSocket communication."""
 
+from hal9000.gateway.events import (
+    EventEmitter,
+    EventType,
+    GatewayEvent,
+    Subscription,
+)
 from hal9000.gateway.protocol import (
     ADAMPromptPayload,
     GatewayMessage,
@@ -18,4 +24,8 @@ __all__ = [
     "ResearchContext",
     "Session",
     "SessionManager",
+    "EventType",
+    "GatewayEvent",
+    "EventEmitter",
+    "Subscription",
 ]
