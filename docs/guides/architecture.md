@@ -48,6 +48,15 @@ All LLM outputs are structured as JSON for reliable parsing and aggregation:
 │                           HAL 9000 Core                                  │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                          │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │                      Gateway Layer                                │   │
+│  │  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐ │   │
+│  │  │ WebSocket  │  │  Session   │  │   Router   │  │   Events   │ │   │
+│  │  │  Server    │  │  Manager   │  │            │  │  Emitter   │ │   │
+│  │  └────────────┘  └────────────┘  └────────────┘  └────────────┘ │   │
+│  └──────────────────────────────────────────────────────────────────┘   │
+│         │                                                               │
+│         ▼                                                               │
 │  ┌──────────────┐    ┌──────────────┐    ┌──────────────────────────┐  │
 │  │   Ingest     │───▶│   RLM        │───▶│   Categorize             │  │
 │  │   Module     │    │   Engine     │    │   (Classification)       │  │
@@ -75,6 +84,16 @@ src/hal9000/
 ├── __init__.py          # Package version
 ├── cli.py               # Command-line interface
 ├── config.py            # Configuration management
+│
+├── gateway/             # WebSocket gateway (real-time communication)
+│   ├── __init__.py
+│   ├── protocol.py      # Message types and models
+│   ├── session.py       # Session management
+│   ├── events.py        # Event streaming system
+│   ├── router.py        # Message routing
+│   ├── server.py        # WebSocket server
+│   ├── health.py        # Health check endpoint
+│   └── persistence.py   # Database session persistence
 │
 ├── ingest/              # Document ingestion
 │   ├── __init__.py
@@ -105,6 +124,91 @@ src/hal9000/
     ├── __init__.py
     └── models.py        # SQLAlchemy models
 ```
+
+## Gateway Architecture
+
+The Gateway module provides real-time WebSocket communication for HAL-9000, enabling clients to interact with the system through a message-based protocol.
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         Gateway Architecture                             │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│   WebSocket Clients                                                      │
+│   ┌─────┐  ┌─────┐  ┌─────┐                                            │
+│   │ CLI │  │ Web │  │Slack│                                            │
+│   └──┬──┘  └──┬──┘  └──┬──┘                                            │
+│      │        │        │                                                │
+│      └────────┼────────┘                                                │
+│               │ WebSocket                                                │
+│               ▼                                                          │
+│   ┌───────────────────────────────────────────────────────────────┐    │
+│   │                     HALGateway (server.py)                     │    │
+│   │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐   │    │
+│   │  │   Router    │  │   Session   │  │   EventEmitter      │   │    │
+│   │  │             │  │   Manager   │  │   (pub/sub)         │   │    │
+│   │  └──────┬──────┘  └──────┬──────┘  └──────────┬──────────┘   │    │
+│   │         │                │                     │              │    │
+│   │         ▼                ▼                     ▼              │    │
+│   │  ┌─────────────────────────────────────────────────────────┐ │    │
+│   │  │                    Message Handlers                      │ │    │
+│   │  │  ┌───────────┐  ┌───────────┐  ┌───────────────────┐   │ │    │
+│   │  │  │  Health   │  │  Echo     │  │  Custom Handlers  │   │ │    │
+│   │  │  │  Handler  │  │  Handler  │  │  (ADAM, Tools)    │   │ │    │
+│   │  │  └───────────┘  └───────────┘  └───────────────────┘   │ │    │
+│   │  └─────────────────────────────────────────────────────────┘ │    │
+│   └───────────────────────────────────────────────────────────────┘    │
+│                               │                                         │
+│                               ▼                                         │
+│   ┌───────────────────────────────────────────────────────────────┐    │
+│   │                PersistentSessionManager                        │    │
+│   │                     (persistence.py)                           │    │
+│   │                           │                                    │    │
+│   │                           ▼                                    │    │
+│   │                   ┌───────────────┐                           │    │
+│   │                   │  SQLite DB    │                           │    │
+│   │                   │ (sessions)    │                           │    │
+│   │                   └───────────────┘                           │    │
+│   └───────────────────────────────────────────────────────────────┘    │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Message Flow
+
+1. **Client connects** → Session created, CONNECTION_OPENED event emitted
+2. **Client sends message** → Router dispatches to registered handler
+3. **Handler processes** → Yields response messages (streaming supported)
+4. **Responses sent** → MESSAGE_SENT events emitted
+5. **Client disconnects** → Session removed, CONNECTION_CLOSED event emitted
+
+### Key Components
+
+| Component | Purpose |
+|-----------|---------|
+| `HALGateway` | WebSocket server, connection management |
+| `Router` | Message dispatch to handlers by type |
+| `SessionManager` | In-memory session tracking |
+| `PersistentSessionManager` | Database-backed session persistence |
+| `EventEmitter` | Pub/sub for gateway events |
+| `HealthChecker` | System health monitoring |
+
+### Message Protocol
+
+All messages use the `GatewayMessage` format:
+
+```python
+@dataclass
+class GatewayMessage:
+    id: str           # UUID
+    type: MessageType # QUERY, COMMAND, RESPONSE, etc.
+    session_id: str   # Session identifier
+    timestamp: datetime
+    payload: dict     # Type-specific data
+    metadata: dict    # Tracing, debugging info
+```
+
+For detailed API documentation, see [Gateway API Reference](../api/gateway.md).
 
 ## Data Flow
 

@@ -15,6 +15,11 @@ An AI-powered research assistant built on Claude Code that processes PDFs, organ
 - **Obsidian Integration**: Generate linked notes and mind maps
 - **ADAM Context Generation**: Create research context libraries for experimental design
 - **Real-time Monitoring**: Watch directories for new PDFs with automatic processing
+- **WebSocket Gateway**: Real-time API server for client integrations
+  - Session management with research context tracking
+  - Message routing with custom handler support
+  - Event streaming for real-time updates
+  - Database persistence for session continuity
 
 ## Installation
 
@@ -82,6 +87,10 @@ All settings can be configured via environment variables with the `HAL9000_` pre
 | `HAL9000_OBSIDIAN__VAULT_PATH` | Path to Obsidian vault | `~/hal9000/vault` |
 | `HAL9000_ADAM__OUTPUT_PATH` | ADAM context output directory | `~/hal9000/contexts` |
 | `HAL9000_DATABASE__URL` | Database connection string | `sqlite:///~/.hal9000/hal9000.db` |
+| `HAL9000_GATEWAY__HOST` | Gateway server host | `127.0.0.1` |
+| `HAL9000_GATEWAY__PORT` | Gateway server port | `9000` |
+| `HAL9000_GATEWAY__MAX_CONNECTIONS` | Max concurrent WebSocket connections | `100` |
+| `HAL9000_GATEWAY__SESSION_TIMEOUT_MINUTES` | Session timeout in minutes | `60` |
 
 ## Quick Start
 
@@ -178,6 +187,32 @@ hal acquisitions --status completed
 - `--status`: Filter by status (pending, completed, failed)
 - `--limit`: Maximum records to show
 
+### `hal gateway start`
+
+Start the WebSocket gateway server for real-time client connections.
+
+```bash
+hal gateway start
+hal gateway start --host 0.0.0.0 --port 8080
+hal gateway start --verbose
+```
+
+**Options:**
+
+- `--host, -h`: Host address to bind to (default: 127.0.0.1)
+- `--port, -p`: Port number to listen on (default: 9000)
+- `--verbose, -v`: Enable verbose logging
+
+**WebSocket Protocol:**
+
+Connect to `ws://<host>:<port>` and send JSON messages:
+
+```json
+{"type": "query", "session_id": "any", "payload": {"query_type": "health"}}
+```
+
+For full API documentation, see [docs/api/gateway.md](docs/api/gateway.md).
+
 ### `hal status`
 Show HAL 9000 status and statistics.
 
@@ -217,6 +252,7 @@ hal-9000/
 ├── src/hal9000/
 │   ├── cli.py              # Command-line interface
 │   ├── config.py           # Configuration management
+│   ├── gateway/            # WebSocket gateway server
 │   ├── acquisition/        # Paper search and download
 │   ├── ingest/             # PDF processing and scanning
 │   ├── rlm/                # RLM processing engine
@@ -229,6 +265,11 @@ hal-9000/
 │   └── materials_science_taxonomy.yaml
 ├── templates/
 │   └── obsidian/           # Note templates
+├── docs/
+│   ├── api/                # API reference documentation
+│   ├── guides/             # User and architecture guides
+│   ├── development/        # Development history
+│   └── wiki/               # Knowledge base
 └── tests/
 ```
 
