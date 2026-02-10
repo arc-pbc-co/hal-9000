@@ -1,0 +1,12 @@
+# Phase 5: Enhanced Intelligence - Progress Log
+
+## Codebase Patterns
+
+- SentenceTransformer for embeddings (all-MiniLM-L6-v2 default)
+- HDBSCAN for semantic clustering (handles noise well)
+- ChromaDB for vector storage (persistent in data/chromadb/)
+- SQLite for LLM cache (hash-based keys)
+- Feedback loop updates session context and vector DB
+
+---
+

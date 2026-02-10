@@ -88,7 +88,7 @@ class Classifier:
 
         # Combine topics and keywords from analysis
         query_topics = analysis.primary_topics + analysis.secondary_topics
-        query_keywords = analysis.keywords
+        query_keywords = list(analysis.keywords)
 
         # Add material names as keywords
         for material in analysis.materials:

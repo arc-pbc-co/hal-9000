@@ -1,0 +1,210 @@
+{
+  "project": "HAL-9000 Refactor",
+  "branchName": "ralph/phase-2-skills",
+  "description": "Phase 2: Skill System - Skill framework, registry, and ADAM Orchestrator skill",
+  "userStories": [
+    {
+      "id": "P2-001",
+      "title": "Create skill base class and manifest",
+      "description": "As a skill developer, I need a base class to implement skills.",
+      "acceptanceCriteria": [
+        "Create src/hal9000/skills/__init__.py",
+        "Create src/hal9000/skills/base.py",
+        "Define ToolDefinition Pydantic model: name, description, parameters, returns",
+        "Define SkillManifest Pydantic model: name, version, description, tools, required_capabilities, adam_compatible",
+        "Define abstract BaseSkill class with: manifest property, execute() async method",
+        "execute() returns AsyncGenerator[dict, None] for streaming",
+        "Typecheck passes",
+        "Unit tests pass"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "P2-002",
+      "title": "Create skill registry",
+      "description": "As a gateway, I need to discover and manage available skills.",
+      "acceptanceCriteria": [
+        "Create src/hal9000/skills/registry.py",
+        "Define SkillRegistry class",
+        "Methods: register(skill), unregister(name), get_skill(name), list_skills()",
+        "Auto-discovery of skills in skills/ directory",
+        "Registry is singleton per gateway",
+        "Typecheck passes",
+        "Unit tests pass"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "P2-003",
+      "title": "Create skill executor",
+      "description": "As a gateway router, I need to execute skill tools safely.",
+      "acceptanceCriteria": [
+        "Create src/hal9000/skills/executor.py",
+        "Define SkillExecutor class",
+        "Methods: execute(skill_name, tool_name, params, session) -> AsyncGenerator",
+        "Validates parameters against tool definition",
+        "Handles execution errors gracefully",
+        "Streams results back to caller",
+        "Typecheck passes",
+        "Unit tests pass"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "P2-004",
+      "title": "Migrate literature functionality to skill",
+      "description": "As a researcher, I want literature search as a skill.",
+      "acceptanceCriteria": [
+        "Create src/hal9000/skills/literature/__init__.py",
+        "Create src/hal9000/skills/literature/skill.py with LiteratureSkill class",
+        "Tools: search, process_pdf, batch_process, acquire_papers",
+        "Reuse existing code from ingest/, acquisition/ modules",
+        "Skill manifest includes all tool definitions",
+        "Typecheck passes",
+        "Unit tests pass"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "P2-005",
+      "title": "Create materials science skill",
+      "description": "As a materials scientist, I want domain-specific tools.",
+      "acceptanceCriteria": [
+        "Create src/hal9000/skills/materials/__init__.py",
+        "Create src/hal9000/skills/materials/skill.py with MaterialsSkill class",
+        "Tools: lookup_properties, predict_structure, match_process, classify_material",
+        "Integrates with existing taxonomy from categorize/",
+        "Typecheck passes",
+        "Unit tests pass"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "P2-006",
+      "title": "Create ADAM prompt models",
+      "description": "As ADAM, I need structured prompt definitions.",
+      "acceptanceCriteria": [
+        "Create src/hal9000/skills/adam/__init__.py",
+        "Create src/hal9000/skills/adam/models.py",
+        "Define CellType enum: METAL, CERAMIC, POLYMER, HYBRID",
+        "Define PromptType enum: DISCOVERY, SYNTHESIS, CHARACTERIZATION, OPTIMIZATION, SCALE_UP, PRODUCTION",
+        "Define ADAMPrompt Pydantic model with all fields from REFACTOR_PLAN.md",
+        "Define ADAMFeedback model for execution results",
+        "Typecheck passes",
+        "Unit tests pass"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "P2-007",
+      "title": "Create ADAM prompt generator",
+      "description": "As a researcher, I need to generate structured ADAM prompts.",
+      "acceptanceCriteria": [
+        "Create src/hal9000/skills/adam/prompt_generator.py",
+        "Define PromptGenerator class",
+        "Methods: generate_discovery_prompt, generate_synthesis_prompt, generate_characterization_prompt",
+        "Uses Claude to synthesize research context into prompts",
+        "Outputs validated ADAMPrompt models",
+        "Typecheck passes",
+        "Unit tests pass"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "P2-008",
+      "title": "Create ADAM context window builder",
+      "description": "As ADAM, I need optimized context windows for my LLM.",
+      "acceptanceCriteria": [
+        "Create src/hal9000/skills/adam/context_builder.py",
+        "Define ContextWindow dataclass with all fields from REFACTOR_PLAN.md",
+        "Define ContextWindowBuilder class",
+        "Methods: build(session, include_literature, include_experiments, max_tokens)",
+        "Prioritizes most relevant information within token budget",
+        "Outputs serializable context for ADAM consumption",
+        "Typecheck passes",
+        "Unit tests pass"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "P2-009",
+      "title": "Create ADAM orchestrator skill",
+      "description": "As a gateway, I need the ADAM orchestrator skill.",
+      "acceptanceCriteria": [
+        "Create src/hal9000/skills/adam/skill.py with ADAMOrchestratorSkill class",
+        "Tools: generate_discovery_prompt, generate_synthesis_prompt, generate_characterization_prompt, build_context_window, route_to_cell, process_adam_feedback",
+        "All tools return streaming results",
+        "adam_compatible flag is True",
+        "Typecheck passes",
+        "Unit tests pass"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "P2-010",
+      "title": "Create knowledge graph skill",
+      "description": "As a researcher, I want knowledge graph tools.",
+      "acceptanceCriteria": [
+        "Create src/hal9000/skills/knowledge/__init__.py",
+        "Create src/hal9000/skills/knowledge/skill.py with KnowledgeGraphSkill class",
+        "Tools: init_vault, create_note, link_concepts, search_knowledge, export_graph",
+        "Reuses existing obsidian/ module code",
+        "Typecheck passes",
+        "Unit tests pass"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "P2-011",
+      "title": "Integrate skills with gateway router",
+      "description": "As a gateway, I need to route TOOL_CALL messages to skills.",
+      "acceptanceCriteria": [
+        "Update src/hal9000/gateway/router.py to handle TOOL_CALL messages",
+        "Router extracts skill_name, tool_name, params from payload",
+        "Router uses SkillExecutor to run tools",
+        "Streams tool results back as TOOL_RESULT messages",
+        "Handles skill not found and tool not found errors",
+        "Typecheck passes",
+        "Integration tests pass"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "P2-012",
+      "title": "Add skill listing to gateway",
+      "description": "As a client, I want to discover available skills.",
+      "acceptanceCriteria": [
+        "Add QUERY handler for action='list_skills'",
+        "Returns all registered skills with their manifests",
+        "Returns tool definitions for each skill",
+        "Typecheck passes",
+        "Integration tests pass"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

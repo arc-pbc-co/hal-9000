@@ -1,0 +1,86 @@
+# Phase 1: Gateway Foundation - Progress Log
+
+## Codebase Patterns
+
+- Use `websockets` library for WebSocket server (async)
+- Pydantic v2 models with `model_dump_json()` for serialization
+- SQLAlchemy 2.0 async patterns for DB operations
+- Rich Console for CLI output
+- All async functions should handle CancelledError gracefully
+
+---
+
+## 2026-02-01 - P1-001: Create gateway protocol definitions
+- Implemented MessageType enum with all 12 message types
+- Created GatewayMessage Pydantic model with factory methods
+- Created ADAMPromptPayload model for ADAM-specific context
+- Added websockets dependency to pyproject.toml
+- **Files changed:**
+  - src/hal9000/gateway/__init__.py (new)
+  - src/hal9000/gateway/protocol.py (new)
+  - tests/gateway/__init__.py (new)
+  - tests/gateway/test_protocol.py (new - 18 tests)
+  - pyproject.toml (added websockets dependency)
+- **Learnings:**
+  - Use ConfigDict instead of class Config for Pydantic v2
+  - Import sorting: stdlib imports (uuid) before from imports
+---
+
+## 2026-02-01 - P1-002: Create session management
+- Implemented ResearchContext dataclass for tracking research state
+- Implemented Session dataclass with to_context_window() method
+- Created SessionManager class for CRUD operations on sessions
+- **Files changed:**
+  - src/hal9000/gateway/session.py (new)
+  - src/hal9000/gateway/__init__.py (updated exports)
+  - tests/gateway/test_session.py (new - 28 tests)
+- **Learnings:**
+  - Use dataclass field(default_factory=...) for mutable defaults
+  - Session.from_dict needs to handle datetime string conversion
+---
+
+## 2026-02-01 - P1-003: Create event streaming system
+- Implemented EventType enum with 20 event types
+- Created GatewayEvent Pydantic model
+- Built EventEmitter with pub/sub using asyncio queues
+- Added Subscription class with type/session filtering
+- **Files changed:**
+  - src/hal9000/gateway/events.py (new)
+  - src/hal9000/gateway/__init__.py (updated exports)
+  - tests/gateway/test_events.py (new - 28 tests)
+- **Learnings:**
+  - Use collections.abc.AsyncGenerator instead of typing.AsyncGenerator (Python 3.9+)
+  - asyncio.Lock protects concurrent subscription modifications
+---
+
+## 2026-02-01 - P1-004: Create message router
+- Implemented Router class with handler registration per MessageType
+- Added default handler support for unhandled types
+- Responses are streamed via AsyncGenerator
+- Errors handled gracefully (unknown types, handler exceptions)
+- Built-in echo_handler and streaming_handler for testing
+- **Files changed:**
+  - src/hal9000/gateway/router.py (new)
+  - src/hal9000/gateway/__init__.py (updated exports)
+  - tests/gateway/test_router.py (new - 17 tests)
+- **Learnings:**
+  - MessageHandler type alias clarifies the expected handler signature
+  - Handle both string and enum MessageType values in route()
+---
+
+## 2026-02-01 - P1-005: Create WebSocket server
+- Implemented HALGateway class with full lifecycle management
+- Session creation on connect, cleanup on disconnect
+- Message parsing, routing, and response streaming
+- Graceful shutdown via signal handlers
+- Server-push capabilities (send_to_session, broadcast)
+- Event emission for all connection lifecycle events
+- **Files changed:**
+  - src/hal9000/gateway/server.py (new)
+  - src/hal9000/gateway/__init__.py (updated exports)
+  - tests/gateway/test_server.py (new - 14 tests)
+- **Learnings:**
+  - websockets 15.x API change: use Any type for connection compatibility
+  - Union[str, bytes] instead of str | bytes for Python 3.9
+---
+

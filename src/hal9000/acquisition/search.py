@@ -198,11 +198,33 @@ class SearchEngine:
         logger.info(f"Deduplication: {len(results)} -> {len(unique)} results")
         return unique
 
+    def _select_providers(self, sources: Optional[list[str]] = None) -> list[BaseProvider]:
+        """Select providers by source name.
+
+        Args:
+            sources: Optional provider names (e.g., ["semantic_scholar", "arxiv"])
+
+        Returns:
+            Selected providers, preserving original order.
+        """
+        if not sources:
+            return self.providers
+
+        requested = {source.strip().lower() for source in sources if source.strip()}
+        selected = [provider for provider in self.providers if provider.name in requested]
+
+        missing = requested - {provider.name for provider in selected}
+        if missing:
+            logger.warning(f"Requested sources not configured: {sorted(missing)}")
+
+        return selected
+
     async def search(
         self,
         topic: str,
         max_results_per_provider: int = 30,
         expand_query: bool = True,
+        sources: Optional[list[str]] = None,
     ) -> list[SearchResult]:
         """Search for papers across all providers.
 
@@ -210,10 +232,16 @@ class SearchEngine:
             topic: Research topic to search for
             max_results_per_provider: Maximum results per provider
             expand_query: Whether to use Claude for query expansion
+            sources: Optional provider names to include
 
         Returns:
             Merged and deduplicated list of SearchResults
         """
+        providers = self._select_providers(sources)
+        if not providers:
+            logger.warning("No providers selected; returning empty search results")
+            return []
+
         # Expand query if enabled
         queries = [topic]
         if expand_query:
@@ -226,7 +254,7 @@ class SearchEngine:
         for query in queries:
             tasks = [
                 self._search_provider(provider, query, max_results_per_provider)
-                for provider in self.providers
+                for provider in providers
             ]
 
             # Run searches in parallel
@@ -348,6 +376,7 @@ class SearchEngine:
         max_results: int = 20,
         relevance_threshold: float = 0.5,
         expand_query: bool = True,
+        sources: Optional[list[str]] = None,
     ) -> list[SearchResult]:
         """Search for papers and filter by relevance.
 
@@ -358,6 +387,7 @@ class SearchEngine:
             max_results: Maximum final results to return
             relevance_threshold: Minimum relevance score
             expand_query: Whether to use Claude for query expansion
+            sources: Optional provider names to include
 
         Returns:
             Relevant and deduplicated search results
@@ -367,6 +397,7 @@ class SearchEngine:
             topic,
             max_results_per_provider=50,  # Get more initially for filtering
             expand_query=expand_query,
+            sources=sources,
         )
 
         if not results:

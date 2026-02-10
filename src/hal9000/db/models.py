@@ -1,7 +1,8 @@
 """Database models for HAL 9000."""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 from sqlalchemy import (
@@ -16,6 +17,7 @@ from sqlalchemy import (
     Text,
     create_engine,
 )
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship
 
 
@@ -25,6 +27,11 @@ class Base(DeclarativeBase):
     pass
 
 
+def utc_now() -> datetime:
+    """Get current UTC time as timezone-aware datetime."""
+    return datetime.now(timezone.utc)
+
+
 # Association table for document-topic many-to-many relationship
 document_topics = Table(
     "document_topics",
@@ -32,7 +39,7 @@ document_topics = Table(
     Column("document_id", String(36), ForeignKey("documents.id"), primary_key=True),
     Column("topic_id", String(36), ForeignKey("topics.id"), primary_key=True),
     Column("confidence", Float, default=1.0),
-    Column("created_at", DateTime, default=datetime.utcnow),
+    Column("created_at", DateTime, default=utc_now),
 )
 
 
@@ -44,7 +51,7 @@ document_relations = Table(
     Column("target_id", String(36), ForeignKey("documents.id"), primary_key=True),
     Column("relation_type", String(50)),  # "cites", "related", "extends", etc.
     Column("confidence", Float, default=1.0),
-    Column("created_at", DateTime, default=datetime.utcnow),
+    Column("created_at", DateTime, default=utc_now),
 )
 
 
@@ -92,9 +99,9 @@ class Document(Base):
     acquisition_query: Mapped[Optional[str]] = mapped_column(String(512))  # Original search topic
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=utc_now, onupdate=utc_now
     )
     processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
@@ -125,9 +132,9 @@ class Topic(Base):
     is_auto_generated: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=utc_now, onupdate=utc_now
     )
 
     # Relationships
@@ -163,7 +170,7 @@ class ProcessingJob(Base):
     error_message: Mapped[Optional[str]] = mapped_column(Text)
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
@@ -196,9 +203,9 @@ class ADAMContext(Base):
     output_path: Mapped[Optional[str]] = mapped_column(String(1024))
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=utc_now, onupdate=utc_now
     )
 
     def __repr__(self) -> str:
@@ -222,9 +229,9 @@ class GatewaySession(Base):
     active_tools: Mapped[Optional[str]] = mapped_column(Text)  # JSON list
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     last_active: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=utc_now, onupdate=utc_now
     )
 
     def __repr__(self) -> str:
@@ -269,7 +276,7 @@ class AcquisitionRecord(Base):
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     downloaded_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
@@ -284,11 +291,33 @@ class AcquisitionRecord(Base):
 DocumentTopic = document_topics
 
 
+def normalize_database_url(database_url: str) -> str:
+    """Normalize database URLs for local filesystem compatibility.
+
+    For sqlite paths, expand `~` and normalize relative paths to absolute paths.
+    """
+    url = make_url(database_url)
+    if url.drivername != "sqlite":
+        return database_url
+
+    database = url.database
+    if not database or database == ":memory:":
+        return database_url
+
+    normalized_path = Path(database).expanduser()
+    if not normalized_path.is_absolute():
+        normalized_path = normalized_path.resolve()
+
+    normalized_url = url.set(database=str(normalized_path))
+    return normalized_url.render_as_string(hide_password=False)
+
+
 def init_db(database_url: str = "sqlite:///./hal9000.db") -> tuple:
     """Initialize the database and return engine and session factory."""
     from sqlalchemy.orm import sessionmaker
 
-    engine = create_engine(database_url, echo=False)
+    normalized_url = normalize_database_url(database_url)
+    engine = create_engine(normalized_url, echo=False)
     Base.metadata.create_all(engine)
     session_factory = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

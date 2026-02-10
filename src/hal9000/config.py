@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Optional
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -159,6 +159,7 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        populate_by_name=True,
     )
 
     # Sub-configurations
@@ -174,7 +175,12 @@ class Settings(BaseSettings):
 
     # Anthropic API configuration
     anthropic_api_key: Optional[str] = Field(
-        default=None, description="Anthropic API key (can also use ANTHROPIC_API_KEY env)"
+        default=None,
+        validation_alias=AliasChoices(
+            "HAL9000_ANTHROPIC_API_KEY",
+            "ANTHROPIC_API_KEY",
+        ),
+        description="Anthropic API key (supports HAL9000_ANTHROPIC_API_KEY and ANTHROPIC_API_KEY)",
     )
 
     # Logging
@@ -216,11 +222,37 @@ def load_settings(config_file: Optional[Path] = None) -> Settings:
 
 # Global settings instance (lazy loaded)
 _settings: Optional[Settings] = None
+_settings_config_path: Optional[Path] = None
 
 
-def get_settings() -> Settings:
-    """Get the global settings instance."""
+def _normalize_config_path(config_file: Optional[Path]) -> Optional[Path]:
+    """Normalize config path for caching comparisons."""
+    if config_file is None:
+        return None
+    return config_file.expanduser().resolve()
+
+
+def get_settings(config_file: Optional[Path] = None, force_reload: bool = False) -> Settings:
+    """Get the global settings instance.
+
+    Args:
+        config_file: Optional YAML config path to merge into settings.
+        force_reload: Force reload from environment/config even if cached.
+    """
     global _settings
-    if _settings is None:
-        _settings = load_settings()
+    global _settings_config_path
+
+    normalized_config = _normalize_config_path(config_file)
+    should_reload = (
+        force_reload
+        or _settings is None
+        or (
+            normalized_config is not None
+            and normalized_config != _settings_config_path
+        )
+    )
+
+    if should_reload:
+        _settings = load_settings(normalized_config)
+        _settings_config_path = normalized_config
     return _settings

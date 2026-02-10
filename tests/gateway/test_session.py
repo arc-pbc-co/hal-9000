@@ -1,8 +1,6 @@
 """Tests for gateway session management."""
 
-from datetime import datetime
-
-import pytest
+from datetime import datetime, timezone
 
 from hal9000.gateway.session import (
     ResearchContext,
@@ -97,7 +95,7 @@ class TestSession:
 
     def test_create_session_with_values(self) -> None:
         """Test creating a session with specific values."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         session = Session(
             id="sess-123",
             channel="cli",

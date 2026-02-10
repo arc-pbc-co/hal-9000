@@ -1,12 +1,13 @@
 """Tests for the search engine."""
 
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
-from hal9000.acquisition.search import SearchEngine
+import pytest
+
+from hal9000.acquisition.providers.arxiv import ArxivProvider
 from hal9000.acquisition.providers.base import SearchResult
 from hal9000.acquisition.providers.semantic_scholar import SemanticScholarProvider
-from hal9000.acquisition.providers.arxiv import ArxivProvider
+from hal9000.acquisition.search import SearchEngine
 
 
 class TestSearchEngine:
@@ -100,6 +101,30 @@ class TestSearchEngine:
         sources = {r.source for r in results}
         assert "semantic_scholar" in sources
         assert "arxiv" in sources
+
+    @pytest.mark.asyncio
+    async def test_search_filters_by_sources(self, engine, mock_providers):
+        """Test that search honors selected sources."""
+        results = await engine.search(
+            "test query",
+            expand_query=False,
+            sources=["arxiv"],
+        )
+
+        assert len(results) == 1
+        assert results[0].source == "arxiv"
+        mock_providers[0].search.assert_not_called()
+        mock_providers[1].search.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_search_with_unknown_source_returns_empty(self, engine):
+        """Test search handles unknown source filters safely."""
+        results = await engine.search(
+            "test query",
+            expand_query=False,
+            sources=["nonexistent_source"],
+        )
+        assert results == []
 
     @pytest.mark.asyncio
     async def test_expand_query_without_anthropic(self, engine):

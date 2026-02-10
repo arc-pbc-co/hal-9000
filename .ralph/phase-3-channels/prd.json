@@ -1,0 +1,170 @@
+{
+  "project": "HAL-9000 Refactor",
+  "branchName": "ralph/phase-3-channels",
+  "description": "Phase 3: Channel Adapters - CLI, Web, ADAM Direct, and API channels",
+  "userStories": [
+    {
+      "id": "P3-001",
+      "title": "Create channel adapter base class",
+      "description": "As a developer, I need a base class for implementing channel adapters.",
+      "acceptanceCriteria": [
+        "Create src/hal9000/channels/__init__.py",
+        "Create src/hal9000/channels/base.py",
+        "Define abstract ChannelAdapter class",
+        "Abstract methods: name property, connect(), receive() -> AsyncGenerator, send(message), stream(generator)",
+        "Typecheck passes",
+        "Unit tests pass"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "P3-002",
+      "title": "Create CLI channel adapter",
+      "description": "As a developer, I want backward-compatible CLI access to the gateway.",
+      "acceptanceCriteria": [
+        "Create src/hal9000/channels/cli.py",
+        "Define CLIChannel class extending ChannelAdapter",
+        "Maps legacy CLI commands to gateway operations",
+        "Command mapping: scan→literature.scan, process→literature.process, batch→literature.batch, acquire→literature.acquire",
+        "Uses Rich for output formatting",
+        "Typecheck passes",
+        "Manual verification: existing CLI commands work"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "P3-003",
+      "title": "Create WebSocket channel adapter",
+      "description": "As a web client, I need a channel for browser connections.",
+      "acceptanceCriteria": [
+        "Create src/hal9000/channels/web.py",
+        "Define WebChannel class extending ChannelAdapter",
+        "Handles WebSocket connections from browsers",
+        "Supports streaming responses",
+        "Handles authentication tokens (optional)",
+        "Typecheck passes",
+        "Unit tests pass"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "P3-004",
+      "title": "Create ADAM direct channel",
+      "description": "As ADAM, I need a dedicated channel for platform integration.",
+      "acceptanceCriteria": [
+        "Create src/hal9000/channels/adam.py",
+        "Define ADAMChannel class extending ChannelAdapter",
+        "Methods: send_prompt(ADAMPrompt) -> execution_id, receive_feedback() -> AsyncGenerator",
+        "Handles ADAM-specific message types",
+        "Supports bidirectional communication",
+        "Typecheck passes",
+        "Unit tests pass"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "P3-005",
+      "title": "Create REST API channel",
+      "description": "As an external system, I need HTTP API access.",
+      "acceptanceCriteria": [
+        "Create src/hal9000/channels/api.py",
+        "Define APIChannel class extending ChannelAdapter",
+        "Uses FastAPI for HTTP endpoints",
+        "Endpoints: POST /api/v1/query, POST /api/v1/tool, GET /api/v1/skills, GET /api/v1/session/{id}",
+        "Returns JSON responses",
+        "Supports streaming via SSE for long operations",
+        "Typecheck passes",
+        "Integration tests pass"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "P3-006",
+      "title": "Create channel registry",
+      "description": "As a gateway, I need to manage available channels.",
+      "acceptanceCriteria": [
+        "Create src/hal9000/channels/registry.py",
+        "Define ChannelRegistry class",
+        "Methods: register(channel), get_channel(name), list_channels()",
+        "Channels auto-register on import",
+        "Typecheck passes",
+        "Unit tests pass"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "P3-007",
+      "title": "Integrate channels with gateway",
+      "description": "As a gateway, I need to handle connections from all channels.",
+      "acceptanceCriteria": [
+        "Update src/hal9000/gateway/server.py to use ChannelRegistry",
+        "Gateway accepts connections from any registered channel",
+        "Session tracks which channel connected",
+        "Channel-specific message handling where needed",
+        "Typecheck passes",
+        "Integration tests pass"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "P3-008",
+      "title": "Add channel configuration",
+      "description": "As a developer, I need to configure which channels are enabled.",
+      "acceptanceCriteria": [
+        "Add ChannelSettings to src/hal9000/config.py",
+        "Settings per channel: enabled, port (if applicable), auth_required",
+        "Environment variables: HAL9000_CHANNELS__CLI__ENABLED, etc.",
+        "Typecheck passes",
+        "Unit tests pass"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "P3-009",
+      "title": "Update CLI to use gateway",
+      "description": "As a user, I want existing CLI commands to use the gateway internally.",
+      "acceptanceCriteria": [
+        "Update src/hal9000/cli.py commands to use CLIChannel",
+        "Commands can work in two modes: direct (no gateway) and gateway-connected",
+        "Flag: --use-gateway to enable gateway mode",
+        "Direct mode remains default for backward compatibility",
+        "Typecheck passes",
+        "Manual verification: 'hal process file.pdf' works in both modes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "P3-010",
+      "title": "Create Slack channel adapter (stub)",
+      "description": "As a team, I want to interact with HAL via Slack.",
+      "acceptanceCriteria": [
+        "Create src/hal9000/channels/slack.py",
+        "Define SlackChannel class extending ChannelAdapter (stub implementation)",
+        "Document required Slack app configuration",
+        "Stub methods raise NotImplementedError with TODO",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": "Full implementation deferred - just create the structure"
+    }
+  ]
+}

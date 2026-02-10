@@ -1,0 +1,114 @@
+/* HAL 9000 Documentation Custom Styles */
+
+/* Hero section for landing page */
+.md-typeset .hero {
+  text-align: center;
+  padding: 2rem 0;
+}
+
+.md-typeset .hero h1 {
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+}
+
+.md-typeset .hero .tagline {
+  font-size: 1.25rem;
+  color: var(--md-default-fg-color--light);
+  margin-bottom: 2rem;
+}
+
+/* Feature grid */
+.md-typeset .grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1rem;
+  margin: 2rem 0;
+}
+
+.md-typeset .grid .card {
+  padding: 1.5rem;
+  border-radius: 0.5rem;
+  background: var(--md-code-bg-color);
+  border: 1px solid var(--md-default-fg-color--lightest);
+}
+
+.md-typeset .grid .card h3 {
+  margin-top: 0;
+  font-size: 1.1rem;
+}
+
+.md-typeset .grid .card p {
+  margin-bottom: 0;
+  font-size: 0.9rem;
+  color: var(--md-default-fg-color--light);
+}
+
+/* Button styles */
+.md-typeset .button {
+  display: inline-block;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.25rem;
+  font-weight: 600;
+  text-decoration: none;
+  margin: 0.25rem;
+}
+
+.md-typeset .button--primary {
+  background: var(--md-primary-fg-color);
+  color: var(--md-primary-bg-color);
+}
+
+.md-typeset .button--primary:hover {
+  background: var(--md-accent-fg-color);
+}
+
+.md-typeset .button--secondary {
+  background: transparent;
+  border: 2px solid var(--md-primary-fg-color);
+  color: var(--md-primary-fg-color);
+}
+
+/* Terminal output styling */
+.md-typeset .terminal {
+  background: #1e1e1e;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  font-family: var(--md-code-font-family);
+  font-size: 0.85rem;
+  overflow-x: auto;
+}
+
+/* Status badges */
+.md-typeset .badge {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.md-typeset .badge--alpha {
+  background: #ffd54f;
+  color: #000;
+}
+
+/* Quick start section */
+.md-typeset .quickstart {
+  background: var(--md-code-bg-color);
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  margin: 2rem 0;
+}
+
+.md-typeset .quickstart h2 {
+  margin-top: 0;
+}
+
+/* Architecture diagram styling */
+.md-typeset pre.diagram {
+  background: transparent;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}

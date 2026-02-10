@@ -1,23 +1,20 @@
 """Unit tests for configuration module."""
 
-import os
 from pathlib import Path
 
-import pytest
-
 from hal9000.config import (
-    Settings,
-    SourcesConfig,
-    CloudConfig,
-    GDriveConfig,
-    ObsidianConfig,
     ADAMConfig,
-    ProcessingConfig,
-    TaxonomyConfig,
+    CloudConfig,
     DatabaseConfig,
     GatewayConfig,
-    load_settings,
+    GDriveConfig,
+    ObsidianConfig,
+    ProcessingConfig,
+    Settings,
+    SourcesConfig,
+    TaxonomyConfig,
     get_settings,
+    load_settings,
 )
 
 
@@ -359,6 +356,27 @@ class TestGetSettings:
 
         assert settings1 is settings2
 
+    def test_get_settings_respects_config_file(self, temp_directory: Path):
+        """Test get_settings can be reloaded from a specific config file."""
+        import yaml
+
+        import hal9000.config as config_module
+
+        config_module._settings = None
+        config_module._settings_config_path = None
+
+        config_data = {
+            "hal9000": {
+                "log_level": "WARNING",
+            }
+        }
+        config_path = temp_directory / "settings.yaml"
+        with open(config_path, "w") as f:
+            yaml.dump(config_data, f)
+
+        settings = get_settings(config_file=config_path, force_reload=True)
+        assert settings.log_level == "WARNING"
+
 
 class TestEnvironmentVariables:
     """Tests for environment variable configuration."""
@@ -386,6 +404,14 @@ class TestEnvironmentVariables:
         settings = Settings()
 
         assert settings.anthropic_api_key == "test-api-key"
+
+    def test_env_var_api_key_unprefixed(self, monkeypatch):
+        """Test ANTHROPIC_API_KEY alias support."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-api-key-unprefixed")
+
+        settings = Settings()
+
+        assert settings.anthropic_api_key == "test-api-key-unprefixed"
 
     def test_env_var_gateway_host(self, monkeypatch):
         """Test gateway host from environment."""

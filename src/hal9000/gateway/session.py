@@ -6,8 +6,20 @@ including research context and conversation history.
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
+
+
+def utc_now() -> datetime:
+    """Get current UTC time as timezone-aware datetime."""
+    return datetime.now(timezone.utc)
+
+
+def ensure_utc(dt: datetime) -> datetime:
+    """Normalize datetime to timezone-aware UTC."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 @dataclass
@@ -56,7 +68,7 @@ class Session:
 
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     channel: str = "websocket"
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=utc_now)
     user_id: Optional[str] = None
     context: ResearchContext = field(default_factory=ResearchContext)
     conversation_history: list[dict[str, Any]] = field(default_factory=list)
@@ -105,7 +117,7 @@ class Session:
     def add_message(self, message: dict[str, Any]) -> None:
         """Add a message to conversation history."""
         if "timestamp" not in message:
-            message["timestamp"] = datetime.utcnow().isoformat()
+            message["timestamp"] = utc_now().isoformat()
         self.conversation_history.append(message)
 
     def to_dict(self) -> dict[str, Any]:
@@ -125,9 +137,11 @@ class Session:
         """Create session from dictionary."""
         created_at = data.get("created_at")
         if isinstance(created_at, str):
-            created_at = datetime.fromisoformat(created_at)
+            created_at = ensure_utc(datetime.fromisoformat(created_at))
         elif created_at is None:
-            created_at = datetime.utcnow()
+            created_at = utc_now()
+        else:
+            created_at = ensure_utc(created_at)
 
         context_data = data.get("context", {})
         context = (

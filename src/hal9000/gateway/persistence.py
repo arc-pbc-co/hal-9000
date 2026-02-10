@@ -6,15 +6,20 @@ sessions to survive gateway restarts.
 
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session as DBSession
 
 from hal9000.db.models import GatewaySession, init_db
-from hal9000.gateway.session import ResearchContext, Session, SessionManager
+from hal9000.gateway.session import ResearchContext, Session, SessionManager, ensure_utc
 
 logger = logging.getLogger(__name__)
+
+
+def utc_now() -> datetime:
+    """Get current UTC time as timezone-aware datetime."""
+    return datetime.now(timezone.utc)
 
 
 class PersistentSessionManager(SessionManager):
@@ -58,7 +63,7 @@ class PersistentSessionManager(SessionManager):
         db = self._get_db_session()
         try:
             # Calculate timeout cutoff
-            cutoff = datetime.utcnow() - timedelta(minutes=self.session_timeout_minutes)
+            cutoff = utc_now() - timedelta(minutes=self.session_timeout_minutes)
 
             # Load active sessions (not expired)
             db_sessions = db.query(GatewaySession).filter(
@@ -94,7 +99,7 @@ class PersistentSessionManager(SessionManager):
         return Session(
             id=db_session.id,
             channel=db_session.channel,
-            created_at=db_session.created_at,
+            created_at=ensure_utc(db_session.created_at),
             user_id=db_session.user_id,
             context=ResearchContext.from_dict(context_data),
             conversation_history=history,
@@ -118,7 +123,7 @@ class PersistentSessionManager(SessionManager):
             conversation_history=json.dumps(session.conversation_history),
             active_tools=json.dumps(session.active_tools),
             created_at=session.created_at,
-            last_active=datetime.utcnow(),
+            last_active=utc_now(),
         )
 
     def save_session(self, session_id: str) -> bool:
@@ -150,7 +155,7 @@ class PersistentSessionManager(SessionManager):
                 db_session.context = json.dumps(session.context.to_dict())
                 db_session.conversation_history = json.dumps(session.conversation_history)
                 db_session.active_tools = json.dumps(session.active_tools)
-                db_session.last_active = datetime.utcnow()
+                db_session.last_active = utc_now()
 
             db.commit()
             return True
@@ -230,7 +235,7 @@ class PersistentSessionManager(SessionManager):
         Returns:
             Number of sessions removed.
         """
-        cutoff = datetime.utcnow() - timedelta(minutes=self.session_timeout_minutes)
+        cutoff = utc_now() - timedelta(minutes=self.session_timeout_minutes)
         removed = 0
 
         # Remove from memory
@@ -276,7 +281,7 @@ class PersistentSessionManager(SessionManager):
             try:
                 db_session = db.query(GatewaySession).filter_by(id=session_id).first()
                 if db_session:
-                    db_session.last_active = datetime.utcnow()
+                    db_session.last_active = utc_now()
                     db.commit()
                     return True
             except Exception as e:

@@ -72,6 +72,11 @@ gdrive = [
 vector = [
     "chromadb>=0.5.0",
 ]
+docs = [
+    "mkdocs-material>=9.5.0",
+    "mkdocs-minify-plugin>=0.8.0",
+    "mkdocstrings[python]>=0.24.0",
+]
 
 [project.scripts]
 hal = "hal9000.cli:cli"

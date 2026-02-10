@@ -8,7 +8,7 @@ import asyncio
 import json
 import logging
 import signal
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional, Union
 
 import websockets
@@ -23,6 +23,11 @@ logger = logging.getLogger(__name__)
 
 # Type alias for websocket connection (works with websockets 12.x and 15.x)
 WebSocketConnection = Any
+
+
+def utc_now() -> datetime:
+    """Get current UTC time as timezone-aware datetime."""
+    return datetime.now(timezone.utc)
 
 
 class HALGateway:
@@ -67,7 +72,7 @@ class HALGateway:
         """Get server uptime in seconds."""
         if self._started_at is None:
             return 0.0
-        return (datetime.utcnow() - self._started_at).total_seconds()
+        return (utc_now() - self._started_at).total_seconds()
 
     @property
     def is_running(self) -> bool:
@@ -84,7 +89,7 @@ class HALGateway:
             self.port,
         )
 
-        self._started_at = datetime.utcnow()
+        self._started_at = utc_now()
         self._shutdown_event.clear()
 
         await self.event_emitter.emit_event(

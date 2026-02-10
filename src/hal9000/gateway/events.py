@@ -7,11 +7,16 @@ to subscribed clients in real-time.
 import asyncio
 import uuid
 from collections.abc import AsyncGenerator
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+def utc_now() -> datetime:
+    """Get current UTC time as timezone-aware datetime."""
+    return datetime.now(timezone.utc)
 
 
 class EventType(str, Enum):
@@ -68,7 +73,7 @@ class GatewayEvent(BaseModel):
         default=None, description="Session associated with this event"
     )
     timestamp: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=utc_now,
         description="When the event occurred",
     )
     data: dict[str, Any] = Field(

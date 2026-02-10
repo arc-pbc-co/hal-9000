@@ -5,7 +5,7 @@ the gateway status and system health.
 """
 
 from collections.abc import AsyncGenerator
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Optional
 
 from hal9000 import __version__
@@ -14,6 +14,11 @@ from hal9000.gateway.session import Session
 
 if TYPE_CHECKING:
     from hal9000.gateway.server import HALGateway
+
+
+def utc_now() -> datetime:
+    """Get current UTC time as timezone-aware datetime."""
+    return datetime.now(timezone.utc)
 
 
 class HealthChecker:
@@ -30,7 +35,7 @@ class HealthChecker:
             gateway: Optional reference to the gateway for status info.
         """
         self._gateway = gateway
-        self._started_at = datetime.utcnow()
+        self._started_at = utc_now()
 
     def set_gateway(self, gateway: "HALGateway") -> None:
         """Set the gateway reference.
@@ -49,7 +54,7 @@ class HealthChecker:
         status: dict[str, Any] = {
             "status": "healthy",
             "version": __version__,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": utc_now().isoformat(),
         }
 
         if self._gateway is not None:
@@ -61,7 +66,7 @@ class HealthChecker:
             })
         else:
             # Fallback when gateway reference not available
-            uptime = (datetime.utcnow() - self._started_at).total_seconds()
+            uptime = (utc_now() - self._started_at).total_seconds()
             status.update({
                 "uptime_seconds": uptime,
                 "active_sessions": 0,

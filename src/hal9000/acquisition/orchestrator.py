@@ -1,31 +1,35 @@
 """Orchestrator for the paper acquisition workflow."""
 
-import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, Optional
 
-from hal9000.acquisition.providers.base import SearchResult
+from hal9000.acquisition.downloader import DownloadManager, DownloadResult
 from hal9000.acquisition.providers import (
-    SemanticScholarProvider,
     ArxivProvider,
+    SemanticScholarProvider,
     UnpaywallProvider,
 )
+from hal9000.acquisition.providers.base import SearchResult
 from hal9000.acquisition.search import SearchEngine
-from hal9000.acquisition.downloader import DownloadManager, DownloadResult
 from hal9000.acquisition.validator import PDFValidator
 
 if TYPE_CHECKING:
     from hal9000.config import Settings
     from hal9000.db.models import Document
     from hal9000.ingest import PDFProcessor
-    from hal9000.rlm import RLMProcessor
     from hal9000.obsidian import VaultManager
+    from hal9000.rlm import RLMProcessor
 
 logger = logging.getLogger(__name__)
+
+
+def utc_now() -> datetime:
+    """Get current UTC time as timezone-aware datetime."""
+    return datetime.now(timezone.utc)
 
 
 @dataclass
@@ -51,7 +55,7 @@ class AcquisitionResult:
     errors: list[str] = field(default_factory=list)
 
     # Timing
-    started_at: datetime = field(default_factory=datetime.utcnow)
+    started_at: datetime = field(default_factory=utc_now)
     completed_at: Optional[datetime] = None
 
     def to_dict(self) -> dict:
@@ -215,10 +219,10 @@ class AcquisitionOrchestrator:
             return None
 
         try:
+            from hal9000.categorize import Classifier
+            from hal9000.categorize.taxonomy import create_materials_science_taxonomy
             from hal9000.db.models import Document
             from hal9000.ingest import MetadataExtractor
-            from hal9000.categorize.taxonomy import create_materials_science_taxonomy
-            from hal9000.categorize import Classifier
             from hal9000.obsidian import NoteGenerator
 
             # Extract PDF content
@@ -337,6 +341,7 @@ class AcquisitionOrchestrator:
                 max_results=max_papers * 2,  # Get extra for filtering
                 relevance_threshold=relevance_threshold,
                 expand_query=True,
+                sources=sources,
             )
 
             result.papers_found = len(search_results)
@@ -346,7 +351,7 @@ class AcquisitionOrchestrator:
 
             if not search_results:
                 result.errors.append("No papers found matching the topic")
-                result.completed_at = datetime.utcnow()
+                result.completed_at = utc_now()
                 result.save_log()
                 return result
 
@@ -424,7 +429,7 @@ class AcquisitionOrchestrator:
 
                     update_progress("Processing", i + 1, len(successful_downloads))
 
-            result.completed_at = datetime.utcnow()
+            result.completed_at = utc_now()
 
             # Save session log
             result.save_log()
@@ -438,7 +443,7 @@ class AcquisitionOrchestrator:
         except Exception as e:
             logger.error(f"Acquisition failed: {e}")
             result.errors.append(f"Acquisition failed: {str(e)}")
-            result.completed_at = datetime.utcnow()
+            result.completed_at = utc_now()
             result.save_log()
 
         return result
@@ -448,6 +453,7 @@ class AcquisitionOrchestrator:
         topic: str,
         max_papers: int = 20,
         relevance_threshold: float = 0.5,
+        sources: Optional[list[str]] = None,
     ) -> list[SearchResult]:
         """Search for papers without downloading (dry run).
 
@@ -455,6 +461,7 @@ class AcquisitionOrchestrator:
             topic: Research topic to search for
             max_papers: Maximum papers to return
             relevance_threshold: Minimum relevance score
+            sources: Optional provider names to include
 
         Returns:
             List of SearchResults that would be downloaded
@@ -464,6 +471,7 @@ class AcquisitionOrchestrator:
             max_results=max_papers,
             relevance_threshold=relevance_threshold,
             expand_query=True,
+            sources=sources,
         )
 
         # Resolve PDF URLs

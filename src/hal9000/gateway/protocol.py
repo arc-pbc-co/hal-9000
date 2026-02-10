@@ -5,11 +5,16 @@ WebSocket communication between clients and the HAL-9000 gateway.
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+def utc_now() -> datetime:
+    """Get current UTC time as timezone-aware datetime."""
+    return datetime.now(timezone.utc)
 
 
 class MessageType(str, Enum):
@@ -73,7 +78,7 @@ class GatewayMessage(BaseModel):
     type: MessageType = Field(..., description="The type of message")
     session_id: str = Field(..., description="Session this message belongs to")
     timestamp: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=utc_now,
         description="When the message was created",
     )
     payload: dict[str, Any] = Field(

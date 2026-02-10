@@ -2,14 +2,14 @@
 
 import json
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 
-from hal9000.db.models import Base, GatewaySession, init_db
+from hal9000.db.models import GatewaySession, init_db
 from hal9000.gateway.persistence import PersistentSessionManager
-from hal9000.gateway.session import ResearchContext, Session
+from hal9000.gateway.session import Session
 
 
 @pytest.fixture
@@ -164,7 +164,7 @@ class TestPersistentSessionManager:
         db = manager1._get_db_session()
         try:
             db_session = db.query(GatewaySession).filter_by(id=session.id).first()
-            db_session.last_active = datetime.utcnow() - timedelta(minutes=5)
+            db_session.last_active = datetime.now(timezone.utc) - timedelta(minutes=5)
             db.commit()
         finally:
             db.close()
@@ -237,7 +237,7 @@ class TestPersistentSessionManager:
         db = manager._get_db_session()
         try:
             db_session = db.query(GatewaySession).filter_by(id=session1.id).first()
-            db_session.last_active = datetime.utcnow() - timedelta(minutes=5)
+            db_session.last_active = datetime.now(timezone.utc) - timedelta(minutes=5)
             db.commit()
         finally:
             db.close()
@@ -246,7 +246,7 @@ class TestPersistentSessionManager:
         manager._sessions[session1.id] = Session(
             id=session1.id,
             channel="test",
-            created_at=datetime.utcnow() - timedelta(minutes=5),
+            created_at=datetime.now(timezone.utc) - timedelta(minutes=5),
         )
 
         removed = manager.cleanup_expired_sessions()
@@ -364,7 +364,7 @@ class TestSessionConversion:
             context='{"materials_of_interest": ["copper"]}',
             conversation_history='[{"role": "user", "content": "hello"}]',
             active_tools='["search"]',
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
 
         session = manager._db_to_session(db_session)

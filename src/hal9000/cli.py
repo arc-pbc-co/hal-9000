@@ -11,6 +11,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 console = Console()
+SUPPORTED_ACQUISITION_SOURCES = {"semantic_scholar", "arxiv"}
 
 
 def setup_logging(verbose: bool = False) -> None:
@@ -21,6 +22,42 @@ def setup_logging(verbose: bool = False) -> None:
         format="%(message)s",
         handlers=[RichHandler(rich_tracebacks=True, console=console)],
     )
+
+
+def _get_settings_from_context(ctx: click.Context):
+    """Load settings honoring the CLI config path."""
+    from hal9000.config import get_settings
+
+    config_path = ctx.obj.get("config_path") if ctx.obj else None
+    return get_settings(config_file=config_path)
+
+
+def _build_rlm_processor(settings):
+    """Create an RLM processor from settings."""
+    from hal9000.rlm import RLMProcessor
+
+    return RLMProcessor(
+        api_key=settings.anthropic_api_key,
+        chunk_size=settings.processing.chunk_size,
+        max_concurrent_calls=settings.processing.max_concurrent_calls,
+    )
+
+
+def _parse_sources_option(raw_sources: str) -> list[str]:
+    """Parse and validate `--sources` values."""
+    sources = [source.strip().lower() for source in raw_sources.split(",") if source.strip()]
+    if not sources:
+        raise click.BadParameter("At least one source must be provided", param_hint="--sources")
+
+    invalid_sources = [source for source in sources if source not in SUPPORTED_ACQUISITION_SOURCES]
+    if invalid_sources:
+        supported = ", ".join(sorted(SUPPORTED_ACQUISITION_SOURCES))
+        invalid = ", ".join(sorted(invalid_sources))
+        raise click.BadParameter(
+            f"Unsupported source(s): {invalid}. Supported values: {supported}",
+            param_hint="--sources",
+        )
+    return sources
 
 
 @click.group()
@@ -41,6 +78,7 @@ def cli(ctx: click.Context, verbose: bool, config: Optional[Path]) -> None:
     ctx.obj["config_path"] = config
 
     setup_logging(verbose)
+    _get_settings_from_context(ctx)
 
 
 @cli.command()
@@ -52,10 +90,9 @@ def scan(ctx: click.Context, paths: tuple[Path, ...], recursive: bool) -> None:
 
     PATHS: One or more directories to scan (uses config defaults if not specified)
     """
-    from hal9000.config import get_settings
     from hal9000.ingest import LocalScanner
 
-    settings = get_settings()
+    settings = _get_settings_from_context(ctx)
 
     # Use provided paths or defaults
     if paths:
@@ -99,109 +136,110 @@ def process(
 
     from hal9000.categorize import Classifier
     from hal9000.categorize.taxonomy import create_materials_science_taxonomy
-    from hal9000.config import get_settings
     from hal9000.db.models import Document, init_db
     from hal9000.ingest import MetadataExtractor, PDFProcessor
     from hal9000.obsidian import NoteGenerator, VaultManager
-    from hal9000.rlm import RLMProcessor
 
-    settings = get_settings()
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-    ) as progress:
-        # Initialize database
-        progress.add_task("Initializing database...", total=None)
-        engine, SessionLocal = init_db(settings.database.url)
-        session = SessionLocal()
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            # Initialize database
+            progress.add_task("Initializing database...", total=None)
 
-        # Step 1: Extract PDF content
-        task = progress.add_task("Extracting PDF content...", total=None)
-        pdf_processor = PDFProcessor()
-        pdf_content = pdf_processor.extract_text(pdf_path)
-        progress.update(task, completed=True)
-
-        console.print(f"  Extracted {pdf_content.page_count} pages, {pdf_content.char_count} chars")
-
-        # Step 2: Extract metadata
-        task = progress.add_task("Extracting metadata...", total=None)
-        metadata_extractor = MetadataExtractor()
-        metadata = metadata_extractor.extract(pdf_content.full_text, pdf_content.metadata)
-        progress.update(task, completed=True)
-
-        if metadata.title:
-            console.print(f"  Title: {metadata.title}")
-        if metadata.authors:
-            console.print(f"  Authors: {', '.join(metadata.authors[:3])}")
-
-        # Step 3: RLM Processing
-        task = progress.add_task("Analyzing document with RLM...", total=None)
-        rlm_processor = RLMProcessor()
-        analysis = rlm_processor.process_document(pdf_content.full_text)
-        progress.update(task, completed=True)
-
-        console.print(f"  Topics: {', '.join(analysis.primary_topics[:5])}")
-
-        # Step 4: Classify
-        task = progress.add_task("Classifying document...", total=None)
-        taxonomy = create_materials_science_taxonomy()
-        classifier = Classifier(taxonomy)
-        classification = classifier.classify(analysis)
-        progress.update(task, completed=True)
-
-        console.print(f"  Categories: {classification.suggested_folder_path}")
-
-        # Step 5: Create database record
-        document = Document(
-            source_path=str(pdf_path),
-            source_type="local",
-            file_hash=pdf_content.file_hash,
-            title=metadata.title or analysis.title,
-            authors=json.dumps(metadata.authors),
-            year=metadata.year,
-            doi=metadata.doi,
-            abstract=metadata.abstract,
-            summary=analysis.summary,
-            key_concepts=json.dumps(analysis.keywords),
-            full_text=pdf_content.full_text[:100000],  # Truncate for DB
-            page_count=pdf_content.page_count,
-            status="completed",
-        )
-        session.add(document)
-        session.commit()
-
-        # Step 6: Create Obsidian note
-        if not no_obsidian:
-            task = progress.add_task("Creating Obsidian note...", total=None)
-            vault = VaultManager(settings.obsidian.vault_path)
-            vault.initialize()
-
-            note_generator = NoteGenerator(vault)
-            note = note_generator.generate_paper_note(
-                document, metadata, analysis, classification
-            )
-            note_generator.write_note(note)
+            # Step 1: Extract PDF content
+            task = progress.add_task("Extracting PDF content...", total=None)
+            pdf_processor = PDFProcessor()
+            pdf_content = pdf_processor.extract_text(pdf_path)
             progress.update(task, completed=True)
 
-            console.print(f"  Note created: {note.path.name}")
+            console.print(f"  Extracted {pdf_content.page_count} pages, {pdf_content.char_count} chars")
 
-        # Output results
-        if output:
-            result = {
-                "document_id": document.id,
-                "title": metadata.title or analysis.title,
-                "metadata": metadata.to_dict(),
-                "analysis": analysis.to_dict(),
-                "classification": {
-                    "topics": classification.topic_slugs,
-                    "folder_path": classification.suggested_folder_path,
-                },
-            }
-            with open(output, "w") as f:
-                json.dump(result, f, indent=2)
-            console.print(f"\n[green]Results saved to: {output}[/green]")
+            # Step 2: Extract metadata
+            task = progress.add_task("Extracting metadata...", total=None)
+            metadata_extractor = MetadataExtractor()
+            metadata = metadata_extractor.extract(pdf_content.full_text, pdf_content.metadata)
+            progress.update(task, completed=True)
+
+            if metadata.title:
+                console.print(f"  Title: {metadata.title}")
+            if metadata.authors:
+                console.print(f"  Authors: {', '.join(metadata.authors[:3])}")
+
+            # Step 3: RLM Processing
+            task = progress.add_task("Analyzing document with RLM...", total=None)
+            rlm_processor = _build_rlm_processor(settings)
+            analysis = rlm_processor.process_document(pdf_content.full_text)
+            progress.update(task, completed=True)
+
+            console.print(f"  Topics: {', '.join(analysis.primary_topics[:5])}")
+
+            # Step 4: Classify
+            task = progress.add_task("Classifying document...", total=None)
+            taxonomy = create_materials_science_taxonomy()
+            classifier = Classifier(taxonomy)
+            classification = classifier.classify(analysis)
+            progress.update(task, completed=True)
+
+            console.print(f"  Categories: {classification.suggested_folder_path}")
+
+            # Step 5: Create database record
+            document = Document(
+                source_path=str(pdf_path),
+                source_type="local",
+                file_hash=pdf_content.file_hash,
+                title=metadata.title or analysis.title,
+                authors=json.dumps(metadata.authors),
+                year=metadata.year,
+                doi=metadata.doi,
+                abstract=metadata.abstract,
+                summary=analysis.summary,
+                key_concepts=json.dumps(analysis.keywords),
+                full_text=pdf_content.full_text[:100000],  # Truncate for DB
+                page_count=pdf_content.page_count,
+                status="completed",
+            )
+            session.add(document)
+            session.commit()
+
+            # Step 6: Create Obsidian note
+            if not no_obsidian:
+                task = progress.add_task("Creating Obsidian note...", total=None)
+                vault = VaultManager(settings.obsidian.vault_path)
+                vault.initialize()
+
+                note_generator = NoteGenerator(vault)
+                note = note_generator.generate_paper_note(
+                    document, metadata, analysis, classification
+                )
+                note_generator.write_note(note)
+                progress.update(task, completed=True)
+
+                console.print(f"  Note created: {note.path.name}")
+
+            # Output results
+            if output:
+                result = {
+                    "document_id": document.id,
+                    "title": metadata.title or analysis.title,
+                    "metadata": metadata.to_dict(),
+                    "analysis": analysis.to_dict(),
+                    "classification": {
+                        "topics": classification.topic_slugs,
+                        "folder_path": classification.suggested_folder_path,
+                    },
+                }
+                with open(output, "w") as f:
+                    json.dump(result, f, indent=2)
+                console.print(f"\n[green]Results saved to: {output}[/green]")
+    finally:
+        session.close()
 
     console.print("\n[bold green]Processing complete![/bold green]")
 
@@ -224,13 +262,9 @@ def batch(
     PATHS: Directories containing PDFs to process
     """
     from hal9000.adam import ContextBuilder
-    from hal9000.categorize import Classifier
-    from hal9000.categorize.taxonomy import create_materials_science_taxonomy
-    from hal9000.config import get_settings
     from hal9000.ingest import LocalScanner, MetadataExtractor, PDFProcessor
-    from hal9000.rlm import RLMProcessor
 
-    settings = get_settings()
+    settings = _get_settings_from_context(ctx)
 
     if paths:
         scan_paths = list(paths)
@@ -254,9 +288,7 @@ def batch(
     # Process each PDF
     pdf_processor = PDFProcessor()
     metadata_extractor = MetadataExtractor()
-    rlm_processor = RLMProcessor()
-    taxonomy = create_materials_science_taxonomy()
-    classifier = Classifier(taxonomy)
+    rlm_processor = _build_rlm_processor(settings)
 
     analyses = []
 
@@ -365,10 +397,10 @@ def acquire(
     """
     import asyncio
 
-    from hal9000.config import get_settings
     from hal9000.db.models import init_db
 
-    settings = get_settings()
+    settings = _get_settings_from_context(ctx)
+    selected_sources = _parse_sources_option(sources)
 
     # Override download dir if specified
     if output_dir:
@@ -377,15 +409,13 @@ def acquire(
     console.print(f"[bold]Acquiring papers on: {topic}[/bold]\n")
 
     # Initialize database
-    engine, SessionLocal = init_db(settings.database.url)
-    session = SessionLocal()
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
 
     # Import acquisition components
     from hal9000.acquisition import AcquisitionOrchestrator
     from hal9000.ingest import PDFProcessor
     from hal9000.obsidian import VaultManager
-    from hal9000.rlm import RLMProcessor
-
     # Initialize processors if processing is enabled
     pdf_processor = None
     rlm_processor = None
@@ -393,7 +423,7 @@ def acquire(
 
     if not no_process:
         pdf_processor = PDFProcessor()
-        rlm_processor = RLMProcessor()
+        rlm_processor = _build_rlm_processor(settings)
 
     if not no_notes:
         vault_manager = VaultManager(settings.obsidian.vault_path)
@@ -417,6 +447,7 @@ def acquire(
                 topic=topic,
                 max_papers=max_papers,
                 relevance_threshold=threshold,
+                sources=selected_sources,
             )
 
             if not results:
@@ -462,6 +493,7 @@ def acquire(
                 result = await orchestrator.acquire(
                     topic=topic,
                     max_papers=max_papers,
+                    sources=selected_sources,
                     process_papers=not no_process,
                     generate_notes=not no_notes,
                     relevance_threshold=threshold,
@@ -493,9 +525,10 @@ def acquire(
                     console.print(f"  - {error}")
 
     # Run the async acquisition
-    asyncio.run(run_acquisition())
-
-    session.close()
+    try:
+        asyncio.run(run_acquisition())
+    finally:
+        session.close()
 
 
 @cli.command()
@@ -513,14 +546,13 @@ def acquisitions(
 
     Shows history of paper acquisition sessions and their status.
     """
-    from hal9000.config import get_settings
     from hal9000.db.models import AcquisitionRecord, init_db
 
-    settings = get_settings()
+    settings = _get_settings_from_context(ctx)
 
     # Initialize database
-    engine, SessionLocal = init_db(settings.database.url)
-    session = SessionLocal()
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
 
     try:
         # Build query
@@ -585,18 +617,15 @@ def acquisitions(
 @click.pass_context
 def init_vault(ctx: click.Context, vault_path: Optional[Path]) -> None:
     """Initialize a new Obsidian vault for research."""
-    from hal9000.config import get_settings
     from hal9000.obsidian import VaultManager
 
-    settings = get_settings()
+    settings = _get_settings_from_context(ctx)
     path = vault_path or Path(settings.obsidian.vault_path)
 
     console.print(f"[bold]Initializing Obsidian vault at: {path}[/bold]")
 
     vault = VaultManager(path)
     vault.initialize()
-
-    stats = vault.get_vault_stats()
 
     console.print("[green]Vault initialized successfully![/green]")
     console.print(f"  Papers folder: {vault.config.papers_folder}")
@@ -608,11 +637,10 @@ def init_vault(ctx: click.Context, vault_path: Optional[Path]) -> None:
 @click.pass_context
 def status(ctx: click.Context) -> None:
     """Show HAL 9000 status and statistics."""
-    from hal9000.config import get_settings
     from hal9000.db.models import Document, init_db
     from hal9000.obsidian import VaultManager
 
-    settings = get_settings()
+    settings = _get_settings_from_context(ctx)
 
     console.print("[bold]HAL 9000 Status[/bold]\n")
 
@@ -630,8 +658,8 @@ def status(ctx: click.Context) -> None:
 
     # Database stats
     try:
-        engine, SessionLocal = init_db(settings.database.url)
-        session = SessionLocal()
+        _, session_local = init_db(settings.database.url)
+        session = session_local()
         doc_count = session.query(Document).count()
 
         table = Table(title="Database")
