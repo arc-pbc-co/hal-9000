@@ -1,0 +1,144 @@
+site_name: HAL 9000
+site_description: AI-powered research assistant for PDF processing, acquisition, and knowledge organization
+site_url: https://hal9000.readthedocs.io
+repo_url: https://github.com/yourusername/hal-9000
+repo_name: hal-9000
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue
+      accent: amber
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue
+      accent: amber
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Inter
+    code: JetBrains Mono
+  icon:
+    repo: fontawesome/brands/github
+    logo: material/robot
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+    - content.action.edit
+
+nav:
+  - Home: index.md
+  - Quick Start: guides/quick-start.md
+  - Guides:
+    - Getting Started: guides/getting-started.md
+    - Configuration: guides/configuration.md
+    - CLI Reference: guides/cli-reference.md
+    - Obsidian Integration: guides/obsidian-integration.md
+    - ADAM Integration: guides/adam-integration.md
+    - Taxonomy Guide: guides/taxonomy.md
+    - Architecture: guides/architecture.md
+    - Development: guides/development.md
+  - API Reference:
+    - Auto-generated API: api/python-reference.md
+    - acquisition: api/acquisition.md
+    - config: api/config.md
+    - ingest: api/ingest.md
+    - rlm: api/rlm.md
+    - categorize: api/categorize.md
+    - obsidian: api/obsidian.md
+    - adam: api/adam.md
+    - gateway: api/gateway.md
+    - db: api/db.md
+  - Wiki:
+    - RLM Patterns: wiki/rlm-patterns.md
+    - Data Flow: wiki/data-flow.md
+    - Knowledge Graph: wiki/knowledge-graph.md
+    - Materials Taxonomy: wiki/materials-taxonomy.md
+    - FAQ: wiki/faq.md
+  - Development Notes:
+    - README: development/README.md
+    - Refactor Plan: development/REFACTOR_PLAN.md
+    - Test Results: development/TEST_RESULTS.md
+    - Test Summary: development/TEST_SUMMARY.md
+
+plugins:
+  - search:
+      separator: '[\s\-,:!=\[\]()"/]+|(?!\b)(?=[A-Z][a-z])|\.(?!\d)|&[lg]t;'
+  - minify:
+      minify_html: true
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: false
+            show_root_heading: true
+            show_root_full_path: false
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.magiclink:
+      repo_url_shorthand: true
+      user: yourusername
+      repo: hal-9000
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/yourusername/hal-9000
+  generator: false
+
+extra_css:
+  - stylesheets/extra.css
+
+copyright: Copyright &copy; 2024 Bryan Wisk

@@ -107,6 +107,7 @@ async def acquire_dry_run(
     topic: str,
     max_papers: int = 20,
     relevance_threshold: float = 0.5,
+    sources: Optional[list[str]] = None,
 ) -> list[SearchResult]
 ```
 
@@ -116,6 +117,7 @@ Search for papers without downloading (dry run).
 - `topic`: Research topic to search for
 - `max_papers`: Maximum papers to return
 - `relevance_threshold`: Minimum relevance score
+- `sources`: Optional list of source names (`semantic_scholar`, `arxiv`)
 
 **Returns**: List of `SearchResult` that would be downloaded
 
@@ -207,8 +209,9 @@ def __init__(
 async def search(
     self,
     topic: str,
-    max_results: int = 50,
+    max_results_per_provider: int = 30,
     expand_query: bool = True,
+    sources: Optional[list[str]] = None,
 ) -> list[SearchResult]
 ```
 
@@ -216,8 +219,9 @@ Search for papers across all providers.
 
 **Parameters**:
 - `topic`: Research topic
-- `max_results`: Maximum results per provider
+- `max_results_per_provider`: Maximum results per provider
 - `expand_query`: Use Claude to expand query
+- `sources`: Optional provider filter by name
 
 **Returns**: Deduplicated list of `SearchResult`
 
@@ -227,9 +231,10 @@ Search for papers across all providers.
 async def search_and_filter(
     self,
     topic: str,
-    max_results: int = 50,
+    max_results: int = 20,
     relevance_threshold: float = 0.5,
     expand_query: bool = True,
+    sources: Optional[list[str]] = None,
 ) -> list[SearchResult]
 ```
 
