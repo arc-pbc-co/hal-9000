@@ -178,17 +178,26 @@ class AcquisitionOrchestrator:
         if not self.unpaywall:
             return results
 
+        def looks_like_direct_pdf_url(url: Optional[str]) -> bool:
+            if not url:
+                return False
+            normalized = url.lower().split("?", 1)[0]
+            return normalized.endswith(".pdf")
+
         resolved_count = 0
         for result in results:
-            if result.pdf_url:
-                continue  # Already has URL
-
-            if result.doi:
+            needs_resolution = (
+                not result.pdf_url
+                or not looks_like_direct_pdf_url(result.pdf_url)
+                or result.source == "semantic_scholar"
+            )
+            if result.doi and needs_resolution:
                 try:
                     resolved = await self.unpaywall.resolve_doi(result.doi)
                     if resolved and resolved.pdf_url:
-                        result.pdf_url = resolved.pdf_url
-                        resolved_count += 1
+                        if resolved.pdf_url != result.pdf_url:
+                            result.pdf_url = resolved.pdf_url
+                            resolved_count += 1
                 except Exception as e:
                     logger.debug(f"Failed to resolve PDF for DOI {result.doi}: {e}")
 
@@ -380,6 +389,35 @@ class AcquisitionOrchestrator:
                 download_result = await self.download_manager.download(
                     search_result, topic
                 )
+
+                # Fallback: when initial URL fails, try a fresh Unpaywall URL for DOI.
+                if (
+                    not download_result.success
+                    and self.unpaywall
+                    and search_result.doi
+                ):
+                    try:
+                        resolved = await self.unpaywall.resolve_doi(search_result.doi)
+                        if (
+                            resolved
+                            and resolved.pdf_url
+                            and resolved.pdf_url != search_result.pdf_url
+                        ):
+                            logger.info(
+                                "Retrying download with Unpaywall URL for DOI %s",
+                                search_result.doi,
+                            )
+                            search_result.pdf_url = resolved.pdf_url
+                            download_result = await self.download_manager.download(
+                                search_result, topic
+                            )
+                    except Exception as e:
+                        logger.debug(
+                            "Fallback URL resolution failed for DOI %s: %s",
+                            search_result.doi,
+                            e,
+                        )
+
                 download_results.append((search_result, download_result))
 
                 if download_result.success:

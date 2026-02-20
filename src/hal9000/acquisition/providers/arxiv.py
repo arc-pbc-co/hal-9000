@@ -1,6 +1,5 @@
 """arXiv API provider for paper search."""
 
-import asyncio
 import logging
 import re
 import xml.etree.ElementTree as ET
@@ -14,7 +13,7 @@ from hal9000.acquisition.providers.base import BaseProvider, SearchResult
 logger = logging.getLogger(__name__)
 
 # arXiv API base URL
-API_BASE = "http://export.arxiv.org/api/query"
+API_BASE = "https://export.arxiv.org/api/query"
 
 # XML namespaces used in arXiv API responses
 NAMESPACES = {
@@ -146,7 +145,7 @@ class ArxivProvider(BaseProvider):
         results = []
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
                 response = await client.get(url)
                 response.raise_for_status()
 
@@ -190,7 +189,7 @@ class ArxivProvider(BaseProvider):
         url = f"{API_BASE}?{urlencode(params)}"
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
                 response = await client.get(url)
                 response.raise_for_status()
 
@@ -234,7 +233,7 @@ class ArxivProvider(BaseProvider):
         results = []
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
                 response = await client.get(url)
                 response.raise_for_status()
 

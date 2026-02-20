@@ -111,3 +111,7 @@ class BaseProvider(ABC):
             PDF URL if found, None otherwise
         """
         return result.pdf_url
+
+    async def get_rate_limit_delay(self) -> float:
+        """Get recommended delay between requests to this provider."""
+        return 0.0

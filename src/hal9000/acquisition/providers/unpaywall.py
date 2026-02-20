@@ -101,20 +101,19 @@ class UnpaywallProvider(BaseProvider):
                     logger.debug(f"No open access version found for: {doi}")
                     return None
 
-                # Extract best open access location
+                # Extract best open access location.
+                # Only use explicit PDF URLs to avoid landing pages that are
+                # frequently blocked and not directly downloadable.
                 pdf_url = None
                 oa_location = data.get("best_oa_location")
                 if oa_location:
-                    pdf_url = oa_location.get("url_for_pdf") or oa_location.get("url")
+                    pdf_url = oa_location.get("url_for_pdf")
 
                 if not pdf_url:
                     # Try other OA locations
                     for location in data.get("oa_locations", []):
                         if location.get("url_for_pdf"):
                             pdf_url = location["url_for_pdf"]
-                            break
-                        elif location.get("url"):
-                            pdf_url = location["url"]
                             break
 
                 if not pdf_url:

@@ -46,6 +46,7 @@ class SemanticScholarProvider(BaseProvider):
         """
         self.api_key = api_key
         self._rate_limit_delay = 0.5 if api_key else 3.0  # seconds between requests
+        self._max_retries = 3
 
     @property
     def name(self) -> str:
@@ -115,9 +116,40 @@ class SemanticScholarProvider(BaseProvider):
 
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(
-                    url, params=params, headers=self._get_headers()
-                )
+                response = None
+                for attempt in range(self._max_retries):
+                    response = await client.get(
+                        url, params=params, headers=self._get_headers()
+                    )
+
+                    if response.status_code != 429:
+                        break
+
+                    # Prefer provider hint, then exponential fallback.
+                    retry_after = response.headers.get("retry-after")
+                    if retry_after and retry_after.isdigit():
+                        wait_time = float(retry_after)
+                    else:
+                        wait_time = max(self._rate_limit_delay, float(2 ** attempt))
+
+                    if attempt < self._max_retries - 1:
+                        logger.warning(
+                            "Semantic Scholar rate limit exceeded, retrying in %.1fs "
+                            "(attempt %d/%d)",
+                            wait_time,
+                            attempt + 1,
+                            self._max_retries,
+                        )
+                        await asyncio.sleep(wait_time)
+                        continue
+
+                    logger.warning("Semantic Scholar rate limit exceeded")
+
+                if response is None:
+                    return results
+                if response.status_code == 429:
+                    return results
+
                 response.raise_for_status()
                 data = response.json()
 
@@ -133,10 +165,7 @@ class SemanticScholarProvider(BaseProvider):
                 logger.info(f"Semantic Scholar: Found {len(results)} papers for '{query}'")
 
         except httpx.HTTPStatusError as e:
-            if e.response.status_code == 429:
-                logger.warning("Semantic Scholar rate limit exceeded")
-            else:
-                logger.error(f"Semantic Scholar API error: {e}")
+            logger.error(f"Semantic Scholar API error: {e}")
         except Exception as e:
             logger.error(f"Semantic Scholar search failed: {e}")
 

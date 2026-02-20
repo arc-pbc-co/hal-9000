@@ -1,8 +1,10 @@
 """Search engine for paper acquisition with Claude-powered query expansion."""
 
 import asyncio
+import inspect
 import json
 import logging
+import time
 from typing import Optional
 
 from anthropic import Anthropic
@@ -83,6 +85,8 @@ class SearchEngine:
         """
         self.providers = providers
         self.model = model
+        self._provider_last_request: dict[str, float] = {}
+        self._provider_locks: dict[str, asyncio.Lock] = {}
 
         # Initialize Anthropic client if API key available
         self._anthropic: Optional[Anthropic] = None
@@ -93,6 +97,35 @@ class SearchEngine:
                 self._anthropic = Anthropic()  # Uses ANTHROPIC_API_KEY env
             except Exception:
                 logger.warning("Anthropic API not configured, query expansion disabled")
+
+    async def _get_provider_delay(self, provider: BaseProvider) -> float:
+        """Resolve provider-specific request spacing safely."""
+        get_delay = getattr(provider, "get_rate_limit_delay", None)
+        if not callable(get_delay):
+            return 0.0
+
+        try:
+            value = get_delay()
+            if inspect.isawaitable(value):
+                value = await value
+            return max(float(value), 0.0)
+        except Exception:
+            return 0.0
+
+    async def _wait_for_provider_rate_limit(self, provider: BaseProvider) -> None:
+        """Respect provider request pacing across expanded query runs."""
+        delay = await self._get_provider_delay(provider)
+        if delay <= 0:
+            return
+
+        lock = self._provider_locks.setdefault(provider.name, asyncio.Lock())
+        async with lock:
+            now = time.monotonic()
+            last_request = self._provider_last_request.get(provider.name, 0.0)
+            elapsed = now - last_request
+            if elapsed < delay:
+                await asyncio.sleep(delay - elapsed)
+            self._provider_last_request[provider.name] = time.monotonic()
 
     async def expand_query(self, topic: str) -> dict:
         """Use Claude to generate effective search queries for a topic.
@@ -155,6 +188,7 @@ class SearchEngine:
             List of SearchResults
         """
         try:
+            await self._wait_for_provider_rate_limit(provider)
             results = await provider.search(query, max_results)
             return results
         except Exception as e:
@@ -246,7 +280,13 @@ class SearchEngine:
         queries = [topic]
         if expand_query:
             expansion = await self.expand_query(topic)
-            queries = expansion.get("queries", [topic])[:3]  # Use top 3 queries
+            expanded_queries = expansion.get("queries", []) or []
+            # Always keep the original topic as a baseline search query.
+            deduped = [topic]
+            for query in expanded_queries:
+                if query and query not in deduped:
+                    deduped.append(query)
+            queries = deduped[:3]  # Keep query fan-out bounded
 
         all_results = []
 

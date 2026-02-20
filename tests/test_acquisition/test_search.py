@@ -1,6 +1,6 @@
 """Tests for the search engine."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -144,6 +144,42 @@ class TestSearchEngine:
 
         # Should still get results from the working provider
         assert len(results) >= 1
+
+    @pytest.mark.asyncio
+    async def test_search_respects_provider_rate_limit_between_queries(self):
+        """Test provider pacing is applied when query expansion yields multiple queries."""
+        provider = MagicMock(spec=SemanticScholarProvider)
+        provider.name = "semantic_scholar"
+        provider.search = AsyncMock(return_value=[])
+        provider.get_rate_limit_delay = AsyncMock(return_value=0.5)
+
+        engine = SearchEngine(providers=[provider], anthropic_api_key=None)
+        engine.expand_query = AsyncMock(return_value={"queries": ["q1", "q2"]})
+
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            await engine.search("test topic", expand_query=True)
+
+        assert provider.search.await_count == 3
+        assert mock_sleep.await_count >= 1
+
+    @pytest.mark.asyncio
+    async def test_search_always_includes_original_topic_query(self):
+        """Test expanded search keeps the original topic query."""
+        provider = MagicMock(spec=SemanticScholarProvider)
+        provider.name = "semantic_scholar"
+        provider.search = AsyncMock(return_value=[])
+        provider.get_rate_limit_delay = AsyncMock(return_value=0.0)
+
+        engine = SearchEngine(providers=[provider], anthropic_api_key=None)
+        engine.expand_query = AsyncMock(
+            return_value={"queries": ["expanded query 1", "expanded query 2"]}
+        )
+
+        await engine.search("original topic", expand_query=True)
+
+        searched_queries = [call.args[0] for call in provider.search.await_args_list]
+        assert searched_queries[0] == "original topic"
+        assert "expanded query 1" in searched_queries
 
 
 class TestSearchEngineWithClaude:
