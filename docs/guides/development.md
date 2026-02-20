@@ -14,7 +14,7 @@ This guide covers contributing to HAL 9000, extending its functionality, and dev
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/hal-9000.git
+git clone https://github.com/arc-pbc-co/hal-9000.git
 cd hal-9000
 
 # Create virtual environment

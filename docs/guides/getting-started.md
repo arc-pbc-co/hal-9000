@@ -13,7 +13,7 @@ If you want the fastest path, use [Quick Start](quick-start.md).
 ## Installation
 
 ```bash
-git clone https://github.com/yourusername/hal-9000.git
+git clone https://github.com/arc-pbc-co/hal-9000.git
 cd hal-9000
 python -m venv .venv
 source .venv/bin/activate

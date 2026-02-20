@@ -1,7 +1,7 @@
 site_name: HAL 9000
 site_description: AI-powered research assistant for PDF processing, acquisition, and knowledge organization
 site_url: https://hal9000.readthedocs.io
-repo_url: https://github.com/yourusername/hal-9000
+repo_url: https://github.com/arc-pbc-co/hal-9000
 repo_name: hal-9000
 edit_uri: edit/main/docs/
 
@@ -117,7 +117,7 @@ markdown_extensions:
   - pymdownx.keys
   - pymdownx.magiclink:
       repo_url_shorthand: true
-      user: yourusername
+      user: arc-pbc-co
       repo: hal-9000
   - pymdownx.mark
   - pymdownx.smartsymbols
@@ -135,7 +135,7 @@ markdown_extensions:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/yourusername/hal-9000
+      link: https://github.com/arc-pbc-co/hal-9000
   generator: false
 
 extra_css:

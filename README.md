@@ -25,7 +25,7 @@ An AI-powered research assistant built on Claude Code that processes PDFs, organ
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/hal-9000.git
+git clone https://github.com/arc-pbc-co/hal-9000.git
 cd hal-9000
 
 # Install with pip

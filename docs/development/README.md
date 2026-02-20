@@ -18,15 +18,6 @@ Summary of the test suite implementation, including test coverage and patterns u
 ### [TEST_RESULTS.md](TEST_RESULTS.md)
 Historical test run results and performance metrics.
 
-## Agent Orchestration (.ralph/)
-
-The `.ralph/` directory in the project root contains the multi-agent orchestration system:
-- Phase-specific PRD files (JSON) with user stories
-- CLAUDE.md instructions for each phase agent
-- Progress tracking and orchestration scripts
-
-This system allows multiple Claude instances to work on different phases concurrently while maintaining consistency.
-
 ## Development Timeline
 
 | Phase | Status | Description |
