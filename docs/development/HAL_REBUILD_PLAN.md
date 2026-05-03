@@ -289,5 +289,9 @@ Deliverables:
 
 ## Immediate Next Tasks
 
-- Add firm-wide export targets for ADAM, Obsidian, Markdown, JSON, and dashboards.
-- Add backup/restore plan for Postgres and object storage.
+- Add HTTP/gateway adapter for review UI workflows.
+- Add document versioning and source refresh policy.
+- Add citation normalization, source quality fields, and deduplication reports.
+- Extend semantic search over claims and outputs.
+- Add collections, saved searches, shared project views, notifications, and audit views.
+- Add retention, secrets-management, compliance, CI, and release-process hardening.
