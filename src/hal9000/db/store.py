@@ -12,6 +12,7 @@ from hal9000.db.models import (
     DocumentChunk,
     EvidenceLink,
     ExtractedClaim,
+    ProjectPermission,
     ResearchOutput,
     ResearchProgramRecord,
     ResearchProject,
@@ -19,6 +20,9 @@ from hal9000.db.models import (
     ResearchRunEvent,
     ResearchToolCall,
     ReviewDecision,
+    Team,
+    TeamMembership,
+    UserAccount,
     utc_now,
 )
 from hal9000.research.program import ResearchProgram
@@ -53,6 +57,14 @@ class RunReviewResult:
     event: ResearchRunEvent
 
 
+PROJECT_ROLE_ORDER = {
+    "viewer": 1,
+    "contributor": 2,
+    "reviewer": 3,
+    "admin": 4,
+}
+
+
 class ResearchStore:
     """Small repository API over the shared research store models."""
 
@@ -79,6 +91,163 @@ class ResearchStore:
         self.session.add(project)
         self.session.flush()
         return project
+
+    def create_user(
+        self,
+        email: str,
+        display_name: Optional[str] = None,
+        external_subject: Optional[str] = None,
+        global_role: str = "member",
+        status: str = "active",
+    ) -> UserAccount:
+        """Create and persist a firm user account."""
+        normalized_email = _normalize_email(email)
+        user = UserAccount(
+            email=normalized_email,
+            display_name=display_name,
+            external_subject=external_subject,
+            global_role=global_role,
+            status=status,
+        )
+        self.session.add(user)
+        self.session.flush()
+        return user
+
+    def get_user_by_email(self, email: str) -> Optional[UserAccount]:
+        """Fetch a user account by normalized email."""
+        return self.session.query(UserAccount).filter_by(email=_normalize_email(email)).one_or_none()
+
+    def create_team(
+        self,
+        slug: str,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        status: str = "active",
+    ) -> Team:
+        """Create and persist a firm team."""
+        normalized_slug = _normalize_slug(slug)
+        team = Team(
+            slug=normalized_slug,
+            name=name or normalized_slug.replace("-", " ").title(),
+            description=description,
+            status=status,
+        )
+        self.session.add(team)
+        self.session.flush()
+        return team
+
+    def get_team_by_slug(self, slug: str) -> Optional[Team]:
+        """Fetch a team by normalized slug."""
+        return self.session.query(Team).filter_by(slug=_normalize_slug(slug)).one_or_none()
+
+    def add_team_member(
+        self,
+        team: Team,
+        user: UserAccount,
+        role: str = "member",
+        status: str = "active",
+    ) -> TeamMembership:
+        """Add or update a user's team membership."""
+        membership = (
+            self.session.query(TeamMembership)
+            .filter_by(team_id=team.id, user_id=user.id)
+            .one_or_none()
+        )
+        if membership is None:
+            membership = TeamMembership(team=team, user=user)
+            self.session.add(membership)
+        membership.role = role
+        membership.status = status
+        self.session.flush()
+        return membership
+
+    def grant_project_access(
+        self,
+        project: ResearchProject,
+        principal_type: str,
+        principal_id: str,
+        role: str,
+        granted_by: Optional[str] = None,
+    ) -> ProjectPermission:
+        """Grant or update a project permission for a user or team principal."""
+        normalized_principal_type = _normalize_principal_type(principal_type)
+        normalized_role = _normalize_project_role(role)
+        permission = (
+            self.session.query(ProjectPermission)
+            .filter_by(
+                project_id=project.id,
+                principal_type=normalized_principal_type,
+                principal_id=principal_id,
+            )
+            .one_or_none()
+        )
+        if permission is None:
+            permission = ProjectPermission(
+                project=project,
+                principal_type=normalized_principal_type,
+                principal_id=principal_id,
+            )
+            self.session.add(permission)
+        permission.role = normalized_role
+        permission.granted_by = granted_by
+        self.session.flush()
+        return permission
+
+    def list_project_permissions(self, project: ResearchProject) -> list[ProjectPermission]:
+        """Return permission grants for a project."""
+        return (
+            self.session.query(ProjectPermission)
+            .filter_by(project_id=project.id)
+            .order_by(ProjectPermission.principal_type, ProjectPermission.principal_id)
+            .all()
+        )
+
+    def project_roles_for_user(
+        self,
+        project: ResearchProject,
+        user: UserAccount,
+    ) -> list[str]:
+        """Return direct and team-derived project roles for a user."""
+        roles = [
+            permission.role
+            for permission in self.session.query(ProjectPermission)
+            .filter_by(project_id=project.id, principal_type="user", principal_id=user.id)
+            .all()
+        ]
+        team_ids = [
+            membership.team_id
+            for membership in user.team_memberships
+            if membership.status == "active" and membership.team.status == "active"
+        ]
+        if team_ids:
+            roles.extend(
+                permission.role
+                for permission in self.session.query(ProjectPermission)
+                .filter(
+                    ProjectPermission.project_id == project.id,
+                    ProjectPermission.principal_type == "team",
+                    ProjectPermission.principal_id.in_(team_ids),
+                )
+                .all()
+            )
+        return roles
+
+    def can_access_project(
+        self,
+        project: ResearchProject,
+        user: UserAccount,
+        required_role: str = "viewer",
+    ) -> bool:
+        """Return whether a user has the requested project role or stronger."""
+        if user.status != "active":
+            return False
+        if user.global_role == "admin":
+            return True
+        required_rank = PROJECT_ROLE_ORDER[_normalize_project_role(required_role)]
+        return any(
+            PROJECT_ROLE_ORDER.get(role, 0) >= required_rank
+            for role in self.project_roles_for_user(project, user)
+        )
 
     def get_project_by_slug(self, slug: str) -> Optional[ResearchProject]:
         """Fetch a project by slug."""
@@ -450,3 +619,41 @@ def _review_message(decision: str) -> str:
         "changes_requested": "Run output changes requested.",
     }
     return messages[decision]
+
+
+def _normalize_email(email: str) -> str:
+    normalized = email.strip().lower()
+    if not normalized or "@" not in normalized:
+        raise ValueError(f"Invalid user email: {email}")
+    return normalized
+
+
+def _normalize_slug(slug: str) -> str:
+    normalized = slug.strip().lower()
+    if not normalized:
+        raise ValueError("Slug must not be empty")
+    return normalized
+
+
+def _normalize_principal_type(principal_type: str) -> str:
+    normalized = principal_type.strip().lower()
+    if normalized not in {"user", "team"}:
+        raise ValueError("Project permission principal_type must be 'user' or 'team'")
+    return normalized
+
+
+def _normalize_project_role(role: str) -> str:
+    normalized = role.strip().lower().replace("-", "_")
+    aliases = {
+        "view": "viewer",
+        "viewer": "viewer",
+        "contribute": "contributor",
+        "contributor": "contributor",
+        "review": "reviewer",
+        "reviewer": "reviewer",
+        "admin": "admin",
+    }
+    if normalized not in aliases:
+        supported = ", ".join(PROJECT_ROLE_ORDER)
+        raise ValueError(f"Unsupported project role: {role}. Supported values: {supported}")
+    return aliases[normalized]

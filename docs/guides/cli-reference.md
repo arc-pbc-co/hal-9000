@@ -25,6 +25,10 @@ hal [OPTIONS] COMMAND [ARGS]
 hal research init-program ./program.md
 hal research validate-program ./program.md
 hal research create-project superalloys --name "Superalloys"
+hal research create-user researcher@example.com --display-name "Researcher"
+hal research create-team materials --name "Materials"
+hal research add-team-member materials researcher@example.com --role member
+hal research grant-project-access superalloys --team-slug materials --role reviewer
 hal research save-program ./program.md --project-slug superalloys
 hal research bootstrap --project-slug firm-research --owner research@example.com
 hal research queue-run --program-id <saved-program-id>
@@ -58,6 +62,8 @@ document chunks through the configured embedding provider and returns the first
 semantic memory results for a project or run. During execution, the worker now
 prepares completed local documents into chunks, embeddings, first-pass claims,
 retrieval context, and staged outputs when corpus records are available.
+`create-user`, `create-team`, `add-team-member`, and `grant-project-access`
+seed the first firm-wide identity and project permission records.
 `observe` gives operators a compact dashboard over run status counts, queue
 health, tool-call totals/costs, recent worker outcomes, recent failures, and
 recent runs. Use `--json` for downstream dashboards or API responses.

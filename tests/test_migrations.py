@@ -28,6 +28,10 @@ def test_alembic_upgrade_head_creates_current_schema(temp_directory: Path):
     assert "evidence_links" in table_names
     assert "chunk_embeddings" in table_names
     assert "research_tool_calls" in table_names
+    assert "user_accounts" in table_names
+    assert "teams" in table_names
+    assert "team_memberships" in table_names
+    assert "project_permissions" in table_names
 
 
 def test_alembic_autogenerate_is_clean(temp_directory: Path):

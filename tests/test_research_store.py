@@ -69,6 +69,42 @@ def test_store_persists_program_run_output_and_review(temp_directory: Path):
         session.close()
 
 
+def test_store_manages_users_teams_and_project_access(temp_directory: Path):
+    """The store should manage basic firm access grants."""
+    _, session_factory = init_db(f"sqlite:///{temp_directory / 'governance.db'}")
+    session = session_factory()
+
+    try:
+        store = ResearchStore(session)
+        project = store.create_project(name="Governance", slug="governance")
+        user = store.create_user(
+            email="Researcher@Example.com",
+            display_name="Researcher",
+        )
+        team = store.create_team(slug="materials", name="Materials")
+        membership = store.add_team_member(team, user, role="manager")
+        permission = store.grant_project_access(
+            project,
+            principal_type="team",
+            principal_id=team.id,
+            role="reviewer",
+            granted_by="admin@example.com",
+        )
+        session.commit()
+
+        assert user.email == "researcher@example.com"
+        assert store.get_user_by_email("RESEARCHER@example.com").id == user.id
+        assert store.get_team_by_slug("materials").id == team.id
+        assert membership.role == "manager"
+        assert permission.role == "reviewer"
+        assert store.can_access_project(project, user, "viewer") is True
+        assert store.can_access_project(project, user, "reviewer") is True
+        assert store.can_access_project(project, user, "admin") is False
+        assert store.list_project_permissions(project)[0].principal_type == "team"
+    finally:
+        session.close()
+
+
 def test_store_persists_chunk_claim_and_evidence(temp_directory: Path):
     """The store should hide relationship boilerplate for claim extraction."""
     _, session_factory = init_db(f"sqlite:///{temp_directory / 'claims.db'}")

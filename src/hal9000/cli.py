@@ -882,6 +882,192 @@ def research_create_project(
         session.close()
 
 
+@research.command("create-user")
+@click.argument("email")
+@click.option("--display-name", help="Human-readable display name")
+@click.option("--external-subject", help="OIDC/SSO subject identifier")
+@click.option(
+    "--global-role",
+    default="member",
+    type=click.Choice(["member", "admin"]),
+    help="Global platform role",
+)
+@click.pass_context
+def research_create_user(
+    ctx: click.Context,
+    email: str,
+    display_name: Optional[str],
+    external_subject: Optional[str],
+    global_role: str,
+) -> None:
+    """Create a firm user account for research OS permissions."""
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        if store.get_user_by_email(email):
+            raise click.ClickException(f"User already exists: {email}")
+        user = store.create_user(
+            email=email,
+            display_name=display_name,
+            external_subject=external_subject,
+            global_role=global_role,
+        )
+        session.commit()
+        console.print(f"[green]Research user created:[/green] {user.email}")
+        console.print(f"  id: {user.id}")
+        console.print(f"  global_role: {user.global_role}")
+    finally:
+        session.close()
+
+
+@research.command("create-team")
+@click.argument("slug")
+@click.option("--name", help="Team display name")
+@click.option("--description", help="Team description")
+@click.pass_context
+def research_create_team(
+    ctx: click.Context,
+    slug: str,
+    name: Optional[str],
+    description: Optional[str],
+) -> None:
+    """Create a firm team for project permission grants."""
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        if store.get_team_by_slug(slug):
+            raise click.ClickException(f"Team already exists: {slug}")
+        team = store.create_team(slug=slug, name=name, description=description)
+        session.commit()
+        console.print(f"[green]Research team created:[/green] {team.slug}")
+        console.print(f"  id: {team.id}")
+    finally:
+        session.close()
+
+
+@research.command("add-team-member")
+@click.argument("team_slug")
+@click.argument("email")
+@click.option(
+    "--role",
+    default="member",
+    type=click.Choice(["member", "manager"]),
+    help="Team membership role",
+)
+@click.pass_context
+def research_add_team_member(
+    ctx: click.Context,
+    team_slug: str,
+    email: str,
+    role: str,
+) -> None:
+    """Add a user to a firm research team."""
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        team = store.get_team_by_slug(team_slug)
+        if team is None:
+            raise click.ClickException(f"Team not found: {team_slug}")
+        user = store.get_user_by_email(email)
+        if user is None:
+            raise click.ClickException(f"User not found: {email}")
+
+        membership = store.add_team_member(team, user, role=role)
+        session.commit()
+        console.print("[green]Team membership recorded.[/green]")
+        console.print(f"  team: {team.slug}")
+        console.print(f"  user: {user.email}")
+        console.print(f"  role: {membership.role}")
+    finally:
+        session.close()
+
+
+@research.command("grant-project-access")
+@click.argument("project_slug")
+@click.option("--user-email", help="Grant access to a user")
+@click.option("--team-slug", help="Grant access to a team")
+@click.option(
+    "--role",
+    required=True,
+    type=click.Choice(["viewer", "contributor", "reviewer", "admin"]),
+    help="Project access role",
+)
+@click.option("--granted-by", help="Granting user or automation")
+@click.pass_context
+def research_grant_project_access(
+    ctx: click.Context,
+    project_slug: str,
+    user_email: Optional[str],
+    team_slug: Optional[str],
+    role: str,
+    granted_by: Optional[str],
+) -> None:
+    """Grant user or team access to a research project."""
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+
+    if bool(user_email) == bool(team_slug):
+        raise click.ClickException("Provide exactly one of --user-email or --team-slug")
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        project = store.get_project_by_slug(project_slug)
+        if project is None:
+            raise click.ClickException(f"Research project not found: {project_slug}")
+
+        if user_email:
+            user = store.get_user_by_email(user_email)
+            if user is None:
+                raise click.ClickException(f"User not found: {user_email}")
+            principal_type = "user"
+            principal_id = user.id
+            principal_label = user.email
+        else:
+            team = store.get_team_by_slug(team_slug or "")
+            if team is None:
+                raise click.ClickException(f"Team not found: {team_slug}")
+            principal_type = "team"
+            principal_id = team.id
+            principal_label = team.slug
+
+        permission = store.grant_project_access(
+            project,
+            principal_type=principal_type,
+            principal_id=principal_id,
+            role=role,
+            granted_by=granted_by,
+        )
+        session.commit()
+        console.print("[green]Project access granted.[/green]")
+        console.print(f"  project: {project.slug}")
+        console.print(f"  principal: {principal_type}:{principal_label}")
+        console.print(f"  role: {permission.role}")
+    finally:
+        session.close()
+
+
 @research.command("save-program")
 @click.argument("path", type=click.Path(exists=True, path_type=Path))
 @click.option("--project-slug", help="Attach the program to a research project")

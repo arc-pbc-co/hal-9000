@@ -178,9 +178,126 @@ class ResearchProject(Base):
     outputs: Mapped[list["ResearchOutput"]] = relationship(
         "ResearchOutput", back_populates="project"
     )
+    permissions: Mapped[list["ProjectPermission"]] = relationship(
+        "ProjectPermission", back_populates="project"
+    )
 
     def __repr__(self) -> str:
         return f"<ResearchProject(id={self.id}, slug={self.slug})>"
+
+
+class UserAccount(Base):
+    """A firm user known to the HAL research OS."""
+
+    __tablename__ = "user_accounts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+
+    email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False)
+    display_name: Mapped[Optional[str]] = mapped_column(String(256))
+    external_subject: Mapped[Optional[str]] = mapped_column(String(512), unique=True)
+    global_role: Mapped[str] = mapped_column(String(50), default="member")
+    status: Mapped[str] = mapped_column(String(50), default="active")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now
+    )
+
+    team_memberships: Mapped[list["TeamMembership"]] = relationship(
+        "TeamMembership", back_populates="user"
+    )
+
+    def __repr__(self) -> str:
+        return f"<UserAccount(id={self.id}, email={self.email})>"
+
+
+class Team(Base):
+    """A firm team that can receive project permissions."""
+
+    __tablename__ = "teams"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+
+    slug: Mapped[str] = mapped_column(String(256), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(256), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(50), default="active")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now
+    )
+
+    memberships: Mapped[list["TeamMembership"]] = relationship(
+        "TeamMembership", back_populates="team"
+    )
+
+    def __repr__(self) -> str:
+        return f"<Team(id={self.id}, slug={self.slug})>"
+
+
+class TeamMembership(Base):
+    """A user's membership in a firm team."""
+
+    __tablename__ = "team_memberships"
+    __table_args__ = (
+        UniqueConstraint("team_id", "user_id", name="uq_team_memberships_team_user"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    team_id: Mapped[str] = mapped_column(String(36), ForeignKey("teams.id"), nullable=False)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("user_accounts.id"), nullable=False)
+
+    role: Mapped[str] = mapped_column(String(50), default="member")
+    status: Mapped[str] = mapped_column(String(50), default="active")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now
+    )
+
+    team: Mapped["Team"] = relationship("Team", back_populates="memberships")
+    user: Mapped["UserAccount"] = relationship("UserAccount", back_populates="team_memberships")
+
+    def __repr__(self) -> str:
+        return f"<TeamMembership(id={self.id}, role={self.role})>"
+
+
+class ProjectPermission(Base):
+    """A user or team permission grant on a research project."""
+
+    __tablename__ = "project_permissions"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id",
+            "principal_type",
+            "principal_id",
+            name="uq_project_permissions_principal",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("research_projects.id"), nullable=False
+    )
+
+    principal_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    principal_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    role: Mapped[str] = mapped_column(String(50), nullable=False)
+    granted_by: Mapped[Optional[str]] = mapped_column(String(256))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now
+    )
+
+    project: Mapped["ResearchProject"] = relationship(
+        "ResearchProject", back_populates="permissions"
+    )
+
+    def __repr__(self) -> str:
+        return f"<ProjectPermission(id={self.id}, principal={self.principal_type}:{self.principal_id})>"
 
 
 class ResearchProgramRecord(Base):

@@ -10,6 +10,8 @@ from hal9000.db.models import (
     ResearchProject,
     ResearchRun,
     ResearchRunEvent,
+    Team,
+    UserAccount,
     get_session,
 )
 from hal9000.research import render_program_template
@@ -58,6 +60,75 @@ def test_research_cli_project_program_and_run_flow(temp_directory: Path):
     assert create_result.exit_code == 0, create_result.output
     assert "Research project created" in create_result.output
 
+    create_user_result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(config_path),
+            "research",
+            "create-user",
+            "researcher@example.com",
+            "--display-name",
+            "Researcher",
+        ],
+        obj={},
+    )
+    assert create_user_result.exit_code == 0, create_user_result.output
+    assert "Research user created" in create_user_result.output
+
+    create_team_result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(config_path),
+            "research",
+            "create-team",
+            "materials",
+            "--name",
+            "Materials",
+        ],
+        obj={},
+    )
+    assert create_team_result.exit_code == 0, create_team_result.output
+    assert "Research team created" in create_team_result.output
+
+    member_result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(config_path),
+            "research",
+            "add-team-member",
+            "materials",
+            "researcher@example.com",
+            "--role",
+            "manager",
+        ],
+        obj={},
+    )
+    assert member_result.exit_code == 0, member_result.output
+    assert "Team membership recorded" in member_result.output
+
+    grant_result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(config_path),
+            "research",
+            "grant-project-access",
+            "cli-project",
+            "--team-slug",
+            "materials",
+            "--role",
+            "reviewer",
+            "--granted-by",
+            "admin@example.com",
+        ],
+        obj={},
+    )
+    assert grant_result.exit_code == 0, grant_result.output
+    assert "Project access granted" in grant_result.output
+
     save_result = runner.invoke(
         cli,
         [
@@ -78,6 +149,12 @@ def test_research_cli_project_program_and_run_flow(temp_directory: Path):
     try:
         program = session.query(ResearchProgramRecord).filter_by(name="CLI Program").one()
         program_id = program.id
+        user = session.query(UserAccount).filter_by(email="researcher@example.com").one()
+        team = session.query(Team).filter_by(slug="materials").one()
+        assert team.memberships[0].user_id == user.id
+        assert team.memberships[0].role == "manager"
+        assert team.id == program.project.permissions[0].principal_id
+        assert program.project.permissions[0].role == "reviewer"
     finally:
         session.close()
 

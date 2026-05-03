@@ -16,6 +16,18 @@ hal research create-project superalloys \
   --name "Superalloys" \
   --owner research@example.com
 
+hal research create-user researcher@example.com \
+  --display-name "Researcher"
+
+hal research create-team materials \
+  --name "Materials"
+
+hal research add-team-member materials researcher@example.com
+
+hal research grant-project-access superalloys \
+  --team-slug materials \
+  --role reviewer
+
 hal research save-program ./program.md \
   --project-slug superalloys
 
@@ -101,6 +113,7 @@ session.commit()
 ## Current Responsibilities
 
 - Create and fetch research projects by slug.
+- Create users, teams, team memberships, and project permission grants.
 - Persist validated research programs.
 - Create queued research runs with budget and tool policy payloads.
 - Append ordered run events and update run status with lifecycle events.

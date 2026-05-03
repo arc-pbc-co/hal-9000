@@ -49,10 +49,11 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add deployment manifests for gateway, worker, docs, Postgres, and S3-compatible object storage.
 - [x] Add firm-wide export targets for ADAM, Obsidian, Markdown, JSON, and dashboards.
 - [x] Add backup/restore plan for Postgres and object storage.
+- [x] Add foundational users, teams, memberships, and project permission grants.
 
 ### In Progress
 
-- [ ] Add authentication, users, teams, and permissions.
+- [ ] Add API enforcement for project permissions.
 - [ ] Add review UI/API for staged outputs.
 
 ### Remaining
@@ -134,7 +135,7 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 
 ### Phase G: Firmwide Access and Governance
 
-- [ ] Add users, teams, roles, and permissions.
+- [x] Add users, teams, roles, and permissions.
 - [ ] Add SSO/OIDC integration plan.
 - [ ] Add project visibility and access enforcement.
 - [ ] Add retention policy for PDFs, artifacts, and logs.
@@ -226,6 +227,7 @@ Implemented in this slice:
 - `Dockerfile` and `deploy/compose.yaml` now define the first deployable stack for gateway, queue worker, docs, Postgres/pgvector, and MinIO object storage.
 - `ResearchOutputExporter` and `hal research export-run/export-project` now publish promoted outputs to ADAM, Obsidian, Markdown, JSON, and dashboard object-store artifacts.
 - `docs/guides/backup-restore.md` now defines the first Postgres and object-storage backup/restore runbook.
+- `UserAccount`, `Team`, `TeamMembership`, and `ProjectPermission` now provide the first durable governance model for project access.
 
 ## Milestone 3: Research Run Orchestrator
 

@@ -12,12 +12,16 @@ from hal9000.db.models import (
     DocumentChunk,
     EvidenceLink,
     ExtractedClaim,
+    ProjectPermission,
     ResearchOutput,
     ResearchProgramRecord,
     ResearchProject,
     ResearchRun,
     ResearchToolCall,
     ReviewDecision,
+    Team,
+    TeamMembership,
+    UserAccount,
     init_db,
     normalize_database_url,
 )
@@ -66,6 +70,50 @@ class TestSharedResearchStoreModels:
         assert "evidence_links" in table_names
         assert "research_outputs" in table_names
         assert "review_decisions" in table_names
+        assert "user_accounts" in table_names
+        assert "teams" in table_names
+        assert "team_memberships" in table_names
+        assert "project_permissions" in table_names
+
+    def test_identity_and_project_permission_relationships(self, temp_directory: Path):
+        """Users and teams should connect to project permission grants."""
+        _, session_factory = init_db(f"sqlite:///{temp_directory / 'identity.db'}")
+        session = session_factory()
+
+        try:
+            project = ResearchProject(
+                name="Governed Research",
+                slug="governed-research",
+                owner="research@example.com",
+            )
+            user = UserAccount(
+                email="researcher@example.com",
+                display_name="Researcher",
+            )
+            team = Team(slug="materials", name="Materials")
+            session.add_all([project, user, team])
+            session.flush()
+
+            membership = TeamMembership(team=team, user=user, role="member")
+            permission = ProjectPermission(
+                project=project,
+                principal_type="team",
+                principal_id=team.id,
+                role="reviewer",
+                granted_by="admin@example.com",
+            )
+
+            session.add(membership)
+            session.add(permission)
+            session.commit()
+
+            saved = session.query(ResearchProject).filter_by(slug="governed-research").one()
+
+            assert saved.permissions[0].role == "reviewer"
+            assert team.memberships[0].user.email == "researcher@example.com"
+            assert user.team_memberships[0].team.slug == "materials"
+        finally:
+            session.close()
 
     def test_project_program_run_output_review_relationships(self, temp_directory: Path):
         """Projects should connect programs, runs, outputs, and review decisions."""
