@@ -11,6 +11,7 @@ rehearsal and engineering review.
 - `migrate`: runs Alembic migrations.
 - `bootstrap`: creates the baseline firm project and starter programs.
 - `gateway`: runs the WebSocket gateway.
+- `app-gateway`: runs HTTP routes for Slack commands/actions and app webhooks.
 - `worker`: polls queued research runs with `hal research work-queue`.
 - `docs`: serves MkDocs.
 
@@ -24,6 +25,7 @@ docker compose --env-file deploy/.env -f deploy/compose.yaml up --build
 Useful endpoints:
 
 - Gateway: `ws://localhost:9000`
+- App gateway: `http://localhost:9101`
 - Docs: `http://localhost:8000`
 - MinIO console: `http://localhost:9001`
 - Postgres: `localhost:5432`
@@ -46,6 +48,7 @@ store where available. Keep these deployment contracts:
 - `HAL9000_STORAGE__BACKEND=s3`.
 - `HAL9000_STORAGE__BUCKET` points at the artifact bucket.
 - Workers run `hal research work-queue` with bounded attempts and timeouts.
+- Slack request URLs point to the app gateway and use `HAL9000_SLACK_SIGNING_SECRET`.
 - Migrations run before gateway and workers start.
 
 ## Backup and Restore

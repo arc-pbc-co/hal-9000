@@ -11,6 +11,10 @@ from hal9000.gateway.health import (
     get_health_checker,
     health_handler,
 )
+from hal9000.gateway.http import (
+    create_gateway_http_server,
+    run_gateway_http_server,
+)
 from hal9000.gateway.persistence import PersistentSessionManager
 from hal9000.gateway.protocol import (
     ADAMPromptPayload,
@@ -50,4 +54,6 @@ __all__ = [
     "HealthChecker",
     "get_health_checker",
     "HALGateway",
+    "create_gateway_http_server",
+    "run_gateway_http_server",
 ]

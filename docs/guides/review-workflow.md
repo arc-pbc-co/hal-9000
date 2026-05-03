@@ -138,6 +138,7 @@ The HTTP adapter also provides JSON endpoints for future gateway or app surfaces
 - `GET /api/review-queue?reviewer=<email>&project_slug=<slug>`
 - `GET /api/review-detail?run_id=<id>&reviewer=<email>`
 - `GET /api/review-comments?target_type=output&target_id=<id>&viewer=<email>`
+- `GET /api/audit-dashboard?reviewer=<email>&project_slug=<slug>`
 - `POST /api/review-comment`
 - `POST /api/review-comment/resolve`
 - `POST /api/review-run`

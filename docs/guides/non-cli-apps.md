@@ -47,6 +47,28 @@ hal research slack-action \
 Slack request verification should use `verify_slack_signature` at the HTTP edge
 before dispatching into `SlackAppService`.
 
+The first HTTP app gateway exposes these routes:
+
+- `POST /slack/command`
+- `POST /slack/action`
+- `POST /slack/actions`
+
+Run it locally with:
+
+```bash
+hal gateway http --host 127.0.0.1 --port 9101
+```
+
+Real Slack slash-command payloads identify users by `user_id`. For staging,
+map Slack user IDs into HAL emails with:
+
+```bash
+export HAL9000_SLACK_USER_MAP_JSON='{"U123456":"reviewer@example.com"}'
+```
+
+Production should replace this with OIDC-backed token-to-user mapping at the
+gateway edge.
+
 ## Google Sheets App
 
 The Google Sheets app should provide a non-CLI project cockpit for reviewers,
@@ -84,6 +106,6 @@ Sheets.
 2. Add Slack app notification jobs for run lifecycle and review-ready events. Done for durable delivery workers.
 3. Add Slack command/action handlers for status, queue, review detail, comments, and review decisions. Done at service/CLI contract level.
 4. Add Google Sheets project sync jobs for runs, review queue, outputs, and audit. Done at service/CLI contract level.
-5. Add HTTP/gateway routes for Slack and Sheets webhooks.
+5. Add HTTP/gateway routes for Slack and Sheets webhooks. Started for Slack.
 6. Add Google Sheets writeback for review comments and decisions.
 7. Add audit logging across both app surfaces. Started.

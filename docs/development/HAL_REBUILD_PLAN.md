@@ -64,7 +64,8 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 
 - [ ] Add scheduled source refresh execution and claim-level dedupe reports.
 - [ ] Add richer figure/table extraction and export rendering.
-- [ ] Add notification delivery workers for Slack/email/Sheets and richer audit dashboards.
+- [ ] Add HTTP deployment polish for Slack/Sheets production app webhooks.
+- [ ] Add retention, secrets-management, compliance, CI, and release-process hardening.
 
 ## Master Completion Checklist
 
@@ -125,7 +126,7 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Stage outputs through `ResearchStore`.
 - [x] Generate run reports from event logs.
 - [x] Render first-pass literature briefs, evidence tables, open questions, ADAM contexts, hypothesis cards, and experiment suggestions.
-- [ ] Replace first-pass renderers with source-rich renderers using real extracted claims, citations, and figures.
+- [x] Replace first-pass renderers with source-rich renderers using real extracted claims, citations, and figures.
 - [x] Add ADAM context schema validation.
 - [x] Add Obsidian/Markdown export from canonical outputs.
 - [x] Add JSON export API for dashboards and downstream tools.
@@ -143,8 +144,8 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add collections, saved searches, and shared project views.
 - [x] Add notification records and review-ready notification hooks.
 - [x] Add audit views for run history and promotion decisions.
-- [ ] Add notification delivery workers for Slack/email/Sheets.
-- [ ] Add richer browser audit dashboards.
+- [x] Add notification delivery workers for Slack/email/Sheets.
+- [x] Add richer browser audit dashboards.
 
 ### Phase G: Firmwide Access and Governance
 
@@ -174,6 +175,19 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add Google Sheets sync jobs for non-CLI run trackers, review queues, outputs, and audit dashboards.
 - [ ] Add Sheets writeback actions for comments, decisions, and run queueing.
 - [x] Add permissions mapping so Slack and Sheets actions use the same OIDC/user/team/project access model as HAL services.
+- [x] Add first HTTP app gateway routes for Slack slash commands and button actions.
+
+## Full-Team Demo Readiness Checklist
+
+- [x] Seed a repeatable demo project, users, staged run, source document, chunks, embeddings, claims, outputs, comments, notifications, saved views, and audit trail with `hal research demo-seed`.
+- [x] Demo flow shows memory search, browser review, Slack command/action contracts, Sheets sync rows, and audit history.
+- [x] Browser review UI exposes queue, output detail, comments, review decisions, and audit dashboard.
+- [x] Slack commands/actions can run from CLI and first HTTP app gateway routes.
+- [x] Sheets project cockpit rows can be generated through `hal research sync-sheets`.
+- [ ] Create an actual demo Google Sheet, grant team visibility, and sync `runs`, `review_queue`, `outputs`, and `audit` tabs.
+- [ ] Configure Slack app request URLs against the HTTP app gateway and verify signatures in a staging tunnel.
+- [ ] Run clean verification immediately before the demo: `pytest`, `mkdocs build --strict`, migration smoke, review UI smoke.
+- [ ] Prepare the leadership story: queue/run memory -> staged output -> review UI -> Slack action -> Sheets dashboard -> audit trail.
 
 ## Milestone 1: Research Program Contract
 
@@ -320,7 +334,7 @@ Deliverables:
 ## Immediate Next Tasks
 
 - Add scheduled source refresh execution and claim-level deduplication reports.
-- Add HTTP/gateway routes for Slack commands/actions and Google Sheets writeback workflows.
+- Add production hardening for HTTP Slack routes and Google Sheets writeback workflows.
 - Add richer figure/table extraction and export rendering.
 - Add Slack app and `#hal-9000-dev` channel workflow for non-CLI team updates.
 - Add Google Sheets writeback for non-CLI comments, review decisions, and run queueing.

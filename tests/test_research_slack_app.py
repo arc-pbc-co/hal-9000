@@ -46,6 +46,27 @@ def test_slack_app_handles_review_queue_buttons_and_decision(temp_directory: Pat
         session.close()
 
 
+def test_slack_app_action_maps_user_id(monkeypatch, temp_directory: Path):
+    """Slack service should support real action payloads with user.id only."""
+    _, session_factory = init_db(f"sqlite:///{temp_directory / 'slack_app_user_id.db'}")
+    session = session_factory()
+    monkeypatch.setenv("HAL9000_SLACK_USER_MAP_JSON", '{"U123": "reviewer@example.com"}')
+    try:
+        store = ResearchStore(session)
+        _, run = _seed_slack_project(store)
+        payload = {
+            "user": {"id": "U123"},
+            "actions": [{"action_id": "hal_promote", "value": json.dumps({"run_id": run.id})}],
+        }
+
+        decision = SlackAppService(store).handle_action(payload)
+
+        assert decision.text == f"Run `{run.id}` is now `promoted`."
+        assert store.get_run(run.id).status == "promoted"
+    finally:
+        session.close()
+
+
 def test_slack_command_cli_queues_run(temp_directory: Path):
     """CLI adapter should process slash command text for gateway workers."""
     db_path = temp_directory / "slack_cli.db"

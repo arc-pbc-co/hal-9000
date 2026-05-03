@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import os
 import time
 from dataclasses import asdict, dataclass
 from typing import Any
@@ -257,9 +258,28 @@ def _payload_user_email(payload: dict[str, Any]) -> str:
     user = payload.get("user") or {}
     profile = user.get("profile") or {}
     email = profile.get("email") or user.get("email")
-    if not email:
-        raise ValueError("Slack action payload must include user email")
-    return str(email)
+    if email:
+        return str(email).strip().lower()
+    user_id = user.get("id")
+    if user_id:
+        mapped = _mapped_slack_user_email(str(user_id))
+        if mapped:
+            return mapped
+    raise ValueError(
+        "Slack action payload must include user email or map user.id through "
+        "HAL9000_SLACK_USER_MAP_JSON"
+    )
+
+
+def _mapped_slack_user_email(user_id: str) -> str | None:
+    raw_map = os.getenv("HAL9000_SLACK_USER_MAP_JSON")
+    if not raw_map:
+        return None
+    user_map = json.loads(raw_map)
+    if not isinstance(user_map, dict):
+        raise ValueError("HAL9000_SLACK_USER_MAP_JSON must be a JSON object")
+    email = user_map.get(user_id)
+    return str(email).strip().lower() if email else None
 
 
 def _section(text: str) -> dict[str, Any]:

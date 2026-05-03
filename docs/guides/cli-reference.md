@@ -32,6 +32,7 @@ hal research grant-project-access superalloys --team-slug materials --role revie
 hal research map-oidc-user --claims-json '{"sub":"s1","email":"researcher@example.com","groups":["hal:materials"]}'
 hal research save-program ./program.md --project-slug superalloys
 hal research bootstrap --project-slug firm-research --owner research@example.com
+hal research demo-seed --project-slug hal-demo --owner bwisk@arc-pbc.com
 hal research queue-run --program-id <saved-program-id>
 hal research runs --project-slug superalloys
 hal research observe
@@ -51,6 +52,7 @@ hal research deliver-notifications --channel slack --limit 20
 hal research slack-command --user reviewer@example.com --text "review firm-research" --json
 hal research sync-sheets firm-research --target review_queue --spreadsheet-id <sheet-id> --range-name "Review!A1" --actor reviewer@example.com --dry-run --json
 hal research audit-events --project-slug firm-research --json
+hal gateway http --host 127.0.0.1 --port 9101
 hal research run-log <run-id>
 hal research run-summary <run-id> --as-user reviewer@example.com
 hal research run-summary <run-id> --json --as-user reviewer@example.com
@@ -96,6 +98,9 @@ using the same embedding provider contract.
 material/method/property nodes.
 `create-user`, `create-team`, `add-team-member`, `grant-project-access`, and
 `map-oidc-user` seed the first firm-wide identity and project permission records.
+`demo-seed` creates a repeatable full-team walkthrough dataset with a staged run,
+source memory, reviewable outputs, comments, notifications, saved views, and
+audit events.
 `observe` gives operators a compact dashboard over run status counts, queue
 health, tool-call totals/costs, recent worker outcomes, recent failures, and
 recent runs. Use `--json` for downstream dashboards or API responses.

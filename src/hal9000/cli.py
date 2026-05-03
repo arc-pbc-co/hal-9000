@@ -772,6 +772,39 @@ def gateway_start(ctx: click.Context, host: str, port: int, verbose: bool) -> No
     console.print("[green]Gateway server stopped.[/green]")
 
 
+@gateway.command("http")
+@click.option("--host", "-h", default="127.0.0.1", help="Host address to bind to")
+@click.option("--port", "-p", default=9101, type=int, help="HTTP port for app webhooks")
+@click.option(
+    "--slack-signing-secret",
+    help="Slack signing secret; defaults to HAL9000_SLACK_SIGNING_SECRET",
+)
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging")
+@click.pass_context
+def gateway_http(
+    ctx: click.Context,
+    host: str,
+    port: int,
+    slack_signing_secret: Optional[str],
+    verbose: bool,
+) -> None:
+    """Start the HTTP app gateway for Slack and Sheets-facing routes."""
+    from hal9000.gateway.http import run_gateway_http_server
+
+    if verbose:
+        setup_logging(verbose=True)
+
+    settings = _get_settings_from_context(ctx)
+    console.print(f"[cyan]Starting app gateway on[/cyan] [bold]http://{host}:{port}[/bold]")
+    console.print("[dim]Routes: GET /health, POST /slack/command, POST /slack/action[/dim]")
+    console.print("[dim]Press Ctrl+C to stop the app gateway[/dim]")
+    try:
+        run_gateway_http_server(settings, host, port, slack_signing_secret)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Shutdown requested...[/yellow]")
+    console.print("[green]App gateway stopped.[/green]")
+
+
 @cli.group()
 @click.pass_context
 def research(ctx: click.Context) -> None:
@@ -1311,6 +1344,82 @@ def research_queue_run(
         console.print("[green]Research run queued.[/green]")
         console.print(f"  id: {run.id}")
         console.print(f"  status: {run.status}")
+    finally:
+        session.close()
+
+
+@research.command("demo-seed")
+@click.option("--project-slug", default="hal-demo", show_default=True)
+@click.option("--project-name", default="HAL 9000 Team Demo", show_default=True)
+@click.option("--owner", default="bwisk@arc-pbc.com", show_default=True, help="Demo owner/admin email")
+@click.option("--reviewer", default="reviewer@example.com", show_default=True, help="Demo reviewer email")
+@click.option(
+    "--contributor",
+    default="researcher@example.com",
+    show_default=True,
+    help="Demo researcher/contributor email",
+)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def research_demo_seed(
+    ctx: click.Context,
+    project_slug: str,
+    project_name: str,
+    owner: str,
+    reviewer: str,
+    contributor: str,
+    as_json: bool,
+) -> None:
+    """Seed a complete full-team demo project, run, memory, review, and app data."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.demo import DemoSeedService, demo_seed_payload
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        result = DemoSeedService(store).seed(
+            project_slug=project_slug,
+            project_name=project_name,
+            owner_email=owner,
+            reviewer_email=reviewer,
+            contributor_email=contributor,
+        )
+        session.commit()
+        payload = demo_seed_payload(result)
+        if as_json:
+            click.echo(json.dumps(payload, indent=2, sort_keys=True))
+            return
+        console.print("[green]HAL demo dataset seeded.[/green]")
+        console.print(f"  project: {payload['project_slug']}")
+        console.print(f"  run: {payload['run_id']}")
+        console.print(f"  reviewer: {payload['reviewer_email']}")
+        console.print(f"  outputs: {len(payload['output_ids'])}")
+        console.print("\n[cyan]Try this demo flow:[/cyan]")
+        console.print(
+            "  hal research search-memory "
+            '"single crystal superalloy creep" '
+            f"--project-slug {payload['project_slug']} --json"
+        )
+        console.print("  hal research review-ui --host 127.0.0.1 --port 9100")
+        console.print(
+            "  hal research slack-command "
+            f"--user {payload['reviewer_email']} --text \"review {payload['project_slug']}\" --json"
+        )
+        console.print(
+            "  hal research sync-sheets "
+            f"{payload['project_slug']} --target review_queue "
+            "--spreadsheet-id <sheet-id> --range-name \"Review Queue!A1\" "
+            f"--actor {payload['reviewer_email']} --reviewer {payload['reviewer_email']} --dry-run --json"
+        )
+    except Exception as exc:
+        session.rollback()
+        raise click.ClickException(str(exc)) from exc
     finally:
         session.close()
 

@@ -128,6 +128,31 @@ services:
     ports:
       - "${HAL9000_GATEWAY_PORT:-9000}:9000"
 
+  app-gateway:
+    <<: *hal-service
+    environment:
+      <<: *hal-env
+      HAL9000_SLACK_SIGNING_SECRET: ${HAL9000_SLACK_SIGNING_SECRET:-}
+      HAL9000_SLACK_USER_MAP_JSON: ${HAL9000_SLACK_USER_MAP_JSON:-{}}
+      HAL9000_GOOGLE_SHEETS_TOKEN: ${HAL9000_GOOGLE_SHEETS_TOKEN:-}
+    command:
+      - hal
+      - --profile
+      - production
+      - gateway
+      - http
+      - --host
+      - 0.0.0.0
+      - --port
+      - "9101"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      object-store-init:
+        condition: service_completed_successfully
+    ports:
+      - "${HAL9000_APP_GATEWAY_PORT:-9101}:9101"
+
   worker:
     <<: *hal-service
     command: >

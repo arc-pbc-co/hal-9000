@@ -20,6 +20,7 @@ def test_compose_manifest_defines_required_services():
         "migrate",
         "bootstrap",
         "gateway",
+        "app-gateway",
         "worker",
         "docs",
     }
@@ -29,6 +30,12 @@ def test_compose_manifest_defines_required_services():
     assert services["object-store"]["image"].startswith("minio/minio")
     assert services["migrate"]["command"] == ["python", "-m", "alembic", "upgrade", "head"]
     assert "gateway" in services["gateway"]["command"]
+    assert services["app-gateway"]["command"][-4:] == [
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "9101",
+    ]
     assert "work-queue" in services["worker"]["command"]
     assert services["docs"]["ports"] == ["${HAL9000_DOCS_PORT:-8000}:8000"]
     assert "postgres-data" in compose["volumes"]
