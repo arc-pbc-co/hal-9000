@@ -47,17 +47,18 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add queued worker execution command for scheduler/process-manager deployments.
 - [x] Add observability CLI/API summary for run status, queue health, tool calls, costs, failures, and worker outcomes.
 - [x] Add deployment manifests for gateway, worker, docs, Postgres, and S3-compatible object storage.
+- [x] Add firm-wide export targets for ADAM, Obsidian, Markdown, JSON, and dashboards.
+- [x] Add backup/restore plan for Postgres and object storage.
 
 ### In Progress
 
-- [ ] Add firm-wide export targets for ADAM, Obsidian, Markdown, JSON, and dashboards.
-- [ ] Add backup/restore plan for Postgres and object storage.
+- [ ] Add authentication, users, teams, and permissions.
+- [ ] Add review UI/API for staged outputs.
 
 ### Remaining
 
-- [ ] Add authentication, users, teams, and permissions.
-- [ ] Add review UI/API for staged outputs.
-- [ ] Add firm-wide export targets for ADAM, Obsidian, Markdown, JSON, and dashboards.
+- [ ] Add document versioning and source refresh policy.
+- [ ] Add comments, annotations, collections, saved searches, and shared project views.
 
 ## Master Completion Checklist
 
@@ -117,9 +118,9 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Generate run reports from event logs.
 - [x] Render first-pass literature briefs, evidence tables, open questions, ADAM contexts, hypothesis cards, and experiment suggestions.
 - [ ] Replace first-pass renderers with source-rich renderers using real extracted claims, citations, and figures.
-- [ ] Add ADAM context schema validation.
-- [ ] Add Obsidian/Markdown export from canonical outputs.
-- [ ] Add JSON export API for dashboards and downstream tools.
+- [x] Add ADAM context schema validation.
+- [x] Add Obsidian/Markdown export from canonical outputs.
+- [x] Add JSON export API for dashboards and downstream tools.
 - [ ] Add output versioning and diffing.
 
 ### Phase F: Collaboration and Review
@@ -146,7 +147,7 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add Docker/Compose for local firmwide stack.
 - [x] Add production deployment manifests.
 - [x] Add observability: run metrics, queue metrics, cost, errors, latency.
-- [ ] Add backup/restore plan for Postgres and object storage.
+- [x] Add backup/restore plan for Postgres and object storage.
 - [ ] Add CI checks for tests, docs, migrations, and lint/type checks.
 - [ ] Add release process and changelog.
 
@@ -223,6 +224,8 @@ Implemented in this slice:
 - `hal research work-queue` now executes queued runs once, providing the first scheduler/process-manager entry point.
 - `ResearchObservabilityService` and `hal research observe` now summarize run status counts, queue health, tool-call cost/failure state, recent worker outcomes, recent failures, and recent runs.
 - `Dockerfile` and `deploy/compose.yaml` now define the first deployable stack for gateway, queue worker, docs, Postgres/pgvector, and MinIO object storage.
+- `ResearchOutputExporter` and `hal research export-run/export-project` now publish promoted outputs to ADAM, Obsidian, Markdown, JSON, and dashboard object-store artifacts.
+- `docs/guides/backup-restore.md` now defines the first Postgres and object-storage backup/restore runbook.
 
 ## Milestone 3: Research Run Orchestrator
 

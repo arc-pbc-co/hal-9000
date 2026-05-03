@@ -37,6 +37,9 @@ hal research run-summary <run-id> --json
 hal research review-run <run-id> --decision promote --reviewer reviewer@example.com
 hal research review-run <run-id> --decision reject --reviewer reviewer@example.com
 hal research review-run <run-id> --decision request-changes --reviewer reviewer@example.com
+hal research export-run <run-id> --target markdown
+hal research export-run <run-id> --target json --json
+hal research export-project firm-research --target dashboard --json
 hal research search-chunks "single crystal creep resistance" --project-slug superalloys
 hal research log-run-event <run-id> --event-type tool.search
 hal research update-run <run-id> --status running
@@ -71,6 +74,10 @@ budget usage, warnings, staged outputs, and reviewer notes into a compact review
 view. Use `--json` when feeding dashboards or a future review UI.
 `review-run` records a reviewer decision for every staged output on the run and
 advances the run to `promoted`, `rejected`, or `changes_requested`.
+`export-run` and `export-project` publish promoted outputs into object-store
+artifacts for ADAM, Obsidian, Markdown, JSON, and dashboard consumers. Use
+`--status staged` for pre-review handoffs and `--status all` for administrative
+exports.
 `cancel-run` records cancellation requests; queued runs are cancelled immediately,
 while running runs move to `cancel_requested` until the worker observes the
 request. `work-queue` executes queued runs once, which makes it suitable for

@@ -157,6 +157,17 @@ records so searches, downloads, processing progress, and RLM LLM-call reservatio
 are inspectable alongside run events. Each paper also receives outcome telemetry
 for found, downloaded, processed, skipped, and failed states.
 
+Promoted outputs can now be exported from the canonical store into ADAM,
+Obsidian, Markdown, JSON, and dashboard bundles:
+
+```bash
+hal research export-run <run-id>
+hal research export-project firm-research --target dashboard --json
+```
+
+These exports use the configured object store, which keeps local developer
+artifacts and production S3-compatible artifacts behind the same URI contract.
+
 ## Engineering Principles
 
 - Store facts once and generate many views from the canonical store.

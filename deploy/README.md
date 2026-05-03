@@ -34,3 +34,5 @@ Useful endpoints:
 - Point S3 settings at the firm object store or AWS S3 when not using MinIO.
 - Run `migrate` before starting `gateway` and `worker`.
 - Run `bootstrap` once per environment; it is idempotent.
+- Follow `docs/guides/backup-restore.md` for Postgres and object-store backup
+  and restore procedures.

@@ -35,6 +35,8 @@ hal research review-run <run-id> \
   --decision request-changes \
   --reviewer head-of-engineering@example.com \
   --rationale "Add stronger citation coverage."
+hal research export-run <run-id> --target markdown
+hal research export-project firm-research --target dashboard --json
 hal research log-run-event <run-id> \
   --event-type tool.search \
   --message "Search started."
@@ -108,6 +110,8 @@ session.commit()
   outcomes, budgets, warnings, outputs, and reviewer notes.
 - Record run-level review decisions across every staged output and advance runs
   to `promoted`, `rejected`, or `changes_requested`.
+- Export promoted run and project outputs into ADAM, Obsidian, Markdown, JSON,
+  and dashboard object-store artifacts.
 - Bootstrap baseline firm research projects and starter programs idempotently.
 - Summarize operations health across run status, queue depth, worker outcomes,
   tool-call costs/failures, recent failed runs, and recent run activity.

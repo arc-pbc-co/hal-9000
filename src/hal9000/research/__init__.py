@@ -1,5 +1,6 @@
 """Research program primitives for HAL 9000."""
 
+from hal9000.research.exports import EXPORT_TARGETS, ExportResult, ResearchOutputExporter
 from hal9000.research.orchestrator import (
     BoundedResearchWorker,
     RunCancelledError,
@@ -20,9 +21,12 @@ from hal9000.research.program import (
 
 __all__ = [
     "BoundedResearchWorker",
+    "EXPORT_TARGETS",
+    "ExportResult",
     "OutputContract",
     "ProgramParseError",
     "ResearchBudget",
+    "ResearchOutputExporter",
     "ResearchProgram",
     "ResearchProgramSpec",
     "ResearchOutputGenerator",

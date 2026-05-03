@@ -47,3 +47,9 @@ store where available. Keep these deployment contracts:
 - `HAL9000_STORAGE__BUCKET` points at the artifact bucket.
 - Workers run `hal research work-queue` with bounded attempts and timeouts.
 - Migrations run before gateway and workers start.
+
+## Backup and Restore
+
+Use [Backup and Restore](backup-restore.md) as the operational runbook for
+Postgres dumps, object-store sync, and restore validation. HAL state is only
+fully recoverable when the database and object artifacts are backed up together.

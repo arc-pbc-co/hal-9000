@@ -1508,6 +1508,215 @@ def research_review_run(
         session.close()
 
 
+def _render_export_results(results) -> None:
+    """Render export results as a CLI table."""
+    table = Table(title="Research Exports")
+    table.add_column("Target", style="cyan")
+    table.add_column("Outputs", style="green", justify="right")
+    table.add_column("Artifacts", style="magenta", justify="right")
+    table.add_column("Manifest URI", style="blue")
+    for result in results:
+        table.add_row(
+            result.target,
+            str(result.output_count),
+            str(result.artifact_count),
+            result.artifact_uri,
+        )
+    console.print(table)
+
+
+def _export_target_values(targets: tuple[str, ...]):
+    """Resolve CLI export target values."""
+    from hal9000.research.exports import EXPORT_TARGETS
+
+    return targets or EXPORT_TARGETS
+
+
+@research.command("export-run")
+@click.argument("run_id")
+@click.option(
+    "--target",
+    "targets",
+    multiple=True,
+    type=click.Choice(["adam", "obsidian", "markdown", "json", "dashboard"]),
+    help="Export target to create; repeat for multiple targets. Defaults to all targets.",
+)
+@click.option(
+    "--status",
+    "statuses",
+    multiple=True,
+    default=("promoted",),
+    help="Output status to include; repeat for multiple statuses or use 'all'.",
+)
+@click.option("--prefix", default="exports", help="Object-store key prefix for export artifacts")
+@click.option("--json", "as_json", is_flag=True, help="Print machine-readable JSON")
+@click.pass_context
+def research_export_run(
+    ctx: click.Context,
+    run_id: str,
+    targets: tuple[str, ...],
+    statuses: tuple[str, ...],
+    prefix: str,
+    as_json: bool,
+) -> None:
+    """Export reviewed outputs from a run to firm-wide target formats."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.exports import ResearchOutputExporter
+    from hal9000.storage import create_object_store_from_settings
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        run = store.get_run(run_id)
+        if run is None:
+            raise click.ClickException(f"Research run not found: {run_id}")
+
+        exporter = ResearchOutputExporter(
+            session=session,
+            object_store=create_object_store_from_settings(settings),
+            artifact_prefix=prefix,
+        )
+        results = exporter.export_run(
+            run,
+            targets=_export_target_values(targets),
+            statuses=statuses,
+        )
+        store.append_run_event(
+            run,
+            event_type="outputs.exported",
+            message=f"Exported run outputs to {len(results)} target(s).",
+            actor="hal-exporter",
+            payload={
+                "targets": [result.target for result in results],
+                "manifest_uris": [result.artifact_uri for result in results],
+                "statuses": list(statuses),
+            },
+        )
+        session.commit()
+    except Exception as exc:
+        session.rollback()
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        session.close()
+
+    if as_json:
+        click.echo(
+            json.dumps(
+                {
+                    "scope": "run",
+                    "run_id": run_id,
+                    "exports": [
+                        {
+                            "target": result.target,
+                            "artifact_uri": result.artifact_uri,
+                            "artifact_count": result.artifact_count,
+                            "output_count": result.output_count,
+                        }
+                        for result in results
+                    ],
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return
+
+    _render_export_results(results)
+
+
+@research.command("export-project")
+@click.argument("project_slug")
+@click.option(
+    "--target",
+    "targets",
+    multiple=True,
+    type=click.Choice(["adam", "obsidian", "markdown", "json", "dashboard"]),
+    help="Export target to create; repeat for multiple targets. Defaults to all targets.",
+)
+@click.option(
+    "--status",
+    "statuses",
+    multiple=True,
+    default=("promoted",),
+    help="Output status to include; repeat for multiple statuses or use 'all'.",
+)
+@click.option("--prefix", default="exports", help="Object-store key prefix for export artifacts")
+@click.option("--json", "as_json", is_flag=True, help="Print machine-readable JSON")
+@click.pass_context
+def research_export_project(
+    ctx: click.Context,
+    project_slug: str,
+    targets: tuple[str, ...],
+    statuses: tuple[str, ...],
+    prefix: str,
+    as_json: bool,
+) -> None:
+    """Export reviewed outputs from a project to firm-wide target formats."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.exports import ResearchOutputExporter
+    from hal9000.storage import create_object_store_from_settings
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        project = store.get_project_by_slug(project_slug)
+        if project is None:
+            raise click.ClickException(f"Research project not found: {project_slug}")
+
+        exporter = ResearchOutputExporter(
+            session=session,
+            object_store=create_object_store_from_settings(settings),
+            artifact_prefix=prefix,
+        )
+        results = exporter.export_project(
+            project,
+            targets=_export_target_values(targets),
+            statuses=statuses,
+        )
+        session.commit()
+    except Exception as exc:
+        session.rollback()
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        session.close()
+
+    if as_json:
+        click.echo(
+            json.dumps(
+                {
+                    "scope": "project",
+                    "project_slug": project_slug,
+                    "exports": [
+                        {
+                            "target": result.target,
+                            "artifact_uri": result.artifact_uri,
+                            "artifact_count": result.artifact_count,
+                            "output_count": result.output_count,
+                        }
+                        for result in results
+                    ],
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return
+
+    _render_export_results(results)
+
+
 @research.command("search-chunks")
 @click.argument("query_text")
 @click.option("--project-slug", help="Limit search to chunks attached to runs in a project")
