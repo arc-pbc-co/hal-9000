@@ -55,6 +55,7 @@ nav:
     - Access Control: guides/access-control.md
     - SSO and OIDC: guides/sso-oidc.md
     - Review Workflow: guides/review-workflow.md
+    - Non-CLI Apps: guides/non-cli-apps.md
     - CLI Reference: guides/cli-reference.md
     - Obsidian Integration: guides/obsidian-integration.md
     - ADAM Integration: guides/adam-integration.md

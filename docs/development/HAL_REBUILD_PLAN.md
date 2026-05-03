@@ -155,6 +155,15 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [ ] Add CI checks for tests, docs, migrations, and lint/type checks.
 - [ ] Add release process and changelog.
 
+### Phase I: Non-CLI App Surfaces
+
+- [ ] Add Slack app for firm-wide research interaction.
+- [ ] Add Slack channel workflow for `#hal-9000-dev`, review-ready run notifications, run summaries, and export links.
+- [ ] Add Slack commands/buttons for queueing runs, checking run status, opening review detail, adding comments, and promoting/requesting changes.
+- [ ] Add Google Sheets app for non-CLI run trackers, review queues, export indexes, and lightweight project dashboards.
+- [ ] Add Sheets sync jobs backed by HAL JSON/dashboard exports.
+- [ ] Add permissions mapping so Slack and Sheets actions use the same OIDC/user/team/project access model as HAL services.
+
 ## Milestone 1: Research Program Contract
 
 Status: implemented.
@@ -290,6 +299,8 @@ Deliverables:
 ## Immediate Next Tasks
 
 - Add HTTP/gateway adapter for review UI workflows.
+- Add Slack app and `#hal-9000-dev` channel workflow for non-CLI team updates.
+- Add Google Sheets app and export sync for non-CLI project tracking.
 - Add document versioning and source refresh policy.
 - Add citation normalization, source quality fields, and deduplication reports.
 - Extend semantic search over claims and outputs.
