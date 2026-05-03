@@ -29,6 +29,7 @@ hal research create-user researcher@example.com --display-name "Researcher"
 hal research create-team materials --name "Materials"
 hal research add-team-member materials researcher@example.com --role member
 hal research grant-project-access superalloys --team-slug materials --role reviewer
+hal research map-oidc-user --claims-json '{"sub":"s1","email":"researcher@example.com","groups":["hal:materials"]}'
 hal research save-program ./program.md --project-slug superalloys
 hal research bootstrap --project-slug firm-research --owner research@example.com
 hal research queue-run --program-id <saved-program-id>
@@ -40,6 +41,9 @@ hal research run-summary <run-id> --as-user reviewer@example.com
 hal research run-summary <run-id> --json --as-user reviewer@example.com
 hal research review-queue --reviewer reviewer@example.com
 hal research review-detail <run-id> --reviewer reviewer@example.com --json
+hal research add-review-comment --target-type output --target-id <output-id> --author reviewer@example.com --body "Add citation."
+hal research review-comments --target-type output --target-id <output-id> --viewer reviewer@example.com --json
+hal research resolve-review-comment <annotation-id> --resolver reviewer@example.com
 hal research review-run <run-id> --decision promote --reviewer reviewer@example.com
 hal research review-run <run-id> --decision reject --reviewer reviewer@example.com
 hal research review-run <run-id> --decision request-changes --reviewer reviewer@example.com
@@ -64,8 +68,8 @@ document chunks through the configured embedding provider and returns the first
 semantic memory results for a project or run. During execution, the worker now
 prepares completed local documents into chunks, embeddings, first-pass claims,
 retrieval context, and staged outputs when corpus records are available.
-`create-user`, `create-team`, `add-team-member`, and `grant-project-access`
-seed the first firm-wide identity and project permission records.
+`create-user`, `create-team`, `add-team-member`, `grant-project-access`, and
+`map-oidc-user` seed the first firm-wide identity and project permission records.
 `observe` gives operators a compact dashboard over run status counts, queue
 health, tool-call totals/costs, recent worker outcomes, recent failures, and
 recent runs. Use `--json` for downstream dashboards or API responses.
@@ -86,6 +90,8 @@ adapters.
 `review-run` records a reviewer decision for every staged output on the run,
 requires reviewer project access, and advances the run to `promoted`,
 `rejected`, or `changes_requested`.
+`add-review-comment`, `review-comments`, and `resolve-review-comment` provide
+the first comments/annotations workflow for outputs and claims.
 `export-run` and `export-project` publish promoted outputs into object-store
 artifacts for ADAM, Obsidian, Markdown, JSON, and dashboard consumers. Use
 `--status staged` for pre-review handoffs and `--status all` for administrative

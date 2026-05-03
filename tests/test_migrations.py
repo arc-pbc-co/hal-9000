@@ -32,6 +32,7 @@ def test_alembic_upgrade_head_creates_current_schema(temp_directory: Path):
     assert "teams" in table_names
     assert "team_memberships" in table_names
     assert "project_permissions" in table_names
+    assert "review_annotations" in table_names
 
 
 def test_alembic_autogenerate_is_clean(temp_directory: Path):

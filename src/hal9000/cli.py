@@ -1068,6 +1068,55 @@ def research_grant_project_access(
         session.close()
 
 
+@research.command("map-oidc-user")
+@click.option("--claims-json", required=True, help="Verified OIDC claims JSON object")
+@click.option("--no-auto-create", is_flag=True, help="Require the HAL user to exist")
+@click.option("--no-sync-teams", is_flag=True, help="Skip OIDC group to HAL team sync")
+@click.pass_context
+def research_map_oidc_user(
+    ctx: click.Context,
+    claims_json: str,
+    no_auto_create: bool,
+    no_sync_teams: bool,
+) -> None:
+    """Map verified OIDC claims into HAL user and team state."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.identity import OIDCIdentityMapper
+
+    try:
+        claims = json.loads(claims_json)
+    except json.JSONDecodeError as exc:
+        raise click.ClickException(f"Invalid claims JSON: {exc}") from exc
+    if not isinstance(claims, dict):
+        raise click.ClickException("Claims JSON must be an object")
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        result = OIDCIdentityMapper(store, settings.auth).map_claims(
+            claims,
+            auto_create=not no_auto_create,
+            sync_teams=not no_sync_teams,
+        )
+        session.commit()
+        console.print("[green]OIDC user mapped.[/green]")
+        console.print(f"  user: {result.user.email}")
+        console.print(f"  created: {result.created}")
+        console.print(f"  global_role: {result.user.global_role}")
+        console.print(f"  teams: {', '.join(result.synced_team_slugs) or '-'}")
+    except Exception as exc:
+        session.rollback()
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        session.close()
+
+
 @research.command("save-program")
 @click.argument("path", type=click.Path(exists=True, path_type=Path))
 @click.option("--project-slug", help="Attach the program to a research project")
@@ -1780,6 +1829,161 @@ def research_review_detail(
             )
         console.print(output_table)
     except Exception as exc:
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        session.close()
+
+
+@research.command("add-review-comment")
+@click.option(
+    "--target-type",
+    required=True,
+    type=click.Choice(["output", "claim"]),
+    help="Annotation target type",
+)
+@click.option("--target-id", required=True, help="Output or claim id")
+@click.option("--author", required=True, help="Author user email")
+@click.option("--body", required=True, help="Comment or annotation body")
+@click.option(
+    "--annotation-type",
+    default="comment",
+    type=click.Choice(["comment", "change_request", "question", "note"]),
+    help="Annotation kind",
+)
+@click.pass_context
+def research_add_review_comment(
+    ctx: click.Context,
+    target_type: str,
+    target_id: str,
+    author: str,
+    body: str,
+    annotation_type: str,
+) -> None:
+    """Add an authorized comment or annotation to an output or claim."""
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.annotations import ReviewAnnotationService
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        annotation = ReviewAnnotationService(store).add_annotation(
+            target_type=target_type,
+            target_id=target_id,
+            body=body,
+            author_email=author,
+            annotation_type=annotation_type,
+        )
+        session.commit()
+        console.print("[green]Review comment added.[/green]")
+        console.print(f"  id: {annotation.id}")
+        console.print(f"  target: {annotation.target_type}:{annotation.target_id}")
+        console.print(f"  status: {annotation.status}")
+    except Exception as exc:
+        session.rollback()
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        session.close()
+
+
+@research.command("review-comments")
+@click.option(
+    "--target-type",
+    required=True,
+    type=click.Choice(["output", "claim"]),
+    help="Annotation target type",
+)
+@click.option("--target-id", required=True, help="Output or claim id")
+@click.option("--viewer", required=True, help="Viewer user email")
+@click.option("--include-resolved", is_flag=True, help="Include resolved comments")
+@click.option("--json", "as_json", is_flag=True, help="Emit comments as JSON")
+@click.pass_context
+def research_review_comments(
+    ctx: click.Context,
+    target_type: str,
+    target_id: str,
+    viewer: str,
+    include_resolved: bool,
+    as_json: bool,
+) -> None:
+    """List authorized comments and annotations for an output or claim."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.annotations import ReviewAnnotationService, annotation_payload
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        annotations = ReviewAnnotationService(store).list_annotations(
+            target_type=target_type,
+            target_id=target_id,
+            viewer_email=viewer,
+            include_resolved=include_resolved,
+        )
+        payloads = [annotation_payload(annotation).to_dict() for annotation in annotations]
+        if as_json:
+            click.echo(json.dumps(payloads, indent=2, sort_keys=True))
+            return
+
+        table = Table(title="Review Comments")
+        table.add_column("ID", style="cyan")
+        table.add_column("Type", style="magenta")
+        table.add_column("Status", style="green")
+        table.add_column("Author", style="blue")
+        table.add_column("Body")
+        for payload in payloads:
+            table.add_row(
+                payload["id"][:8],
+                payload["annotation_type"],
+                payload["status"],
+                payload["author_email"] or "-",
+                payload["body"][:100],
+            )
+        console.print(table)
+    except Exception as exc:
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        session.close()
+
+
+@research.command("resolve-review-comment")
+@click.argument("annotation_id")
+@click.option("--resolver", required=True, help="Resolver user email")
+@click.pass_context
+def research_resolve_review_comment(
+    ctx: click.Context,
+    annotation_id: str,
+    resolver: str,
+) -> None:
+    """Resolve an authorized review comment or annotation."""
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.annotations import ReviewAnnotationService
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        annotation = ReviewAnnotationService(store).resolve_annotation(
+            annotation_id,
+            resolver_email=resolver,
+        )
+        session.commit()
+        console.print("[green]Review comment resolved.[/green]")
+        console.print(f"  id: {annotation.id}")
+        console.print(f"  resolved_by: {annotation.resolved_by}")
+    except Exception as exc:
+        session.rollback()
         raise click.ClickException(str(exc)) from exc
     finally:
         session.close()

@@ -11,6 +11,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Table,
@@ -647,6 +648,43 @@ class ReviewDecision(Base):
 
     def __repr__(self) -> str:
         return f"<ReviewDecision(id={self.id}, decision={self.decision})>"
+
+
+class ReviewAnnotation(Base):
+    """A reviewer comment or annotation on a research output or claim."""
+
+    __tablename__ = "review_annotations"
+    __table_args__ = (
+        Index("ix_review_annotations_target", "target_type", "target_id"),
+        Index("ix_review_annotations_run_status", "run_id", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    project_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("research_projects.id")
+    )
+    run_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("research_runs.id"))
+    target_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    target_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    author_user_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("user_accounts.id"))
+    author_email: Mapped[Optional[str]] = mapped_column(String(320))
+    annotation_type: Mapped[str] = mapped_column(String(50), default="comment")
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(50), default="open")
+    resolved_by: Mapped[Optional[str]] = mapped_column(String(320))
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now
+    )
+
+    project: Mapped[Optional["ResearchProject"]] = relationship("ResearchProject")
+    run: Mapped[Optional["ResearchRun"]] = relationship("ResearchRun")
+    author: Mapped[Optional["UserAccount"]] = relationship("UserAccount")
+
+    def __repr__(self) -> str:
+        return f"<ReviewAnnotation(id={self.id}, target={self.target_type}:{self.target_id})>"
 
 
 class ProcessingJob(Base):

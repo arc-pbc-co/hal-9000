@@ -32,5 +32,18 @@ hal9000:
     host: 0.0.0.0
     port: 9000
 
+  auth:
+    enabled: true
+    provider: oidc
+    oidc_issuer_url: https://issuer.example.com/
+    oidc_audience: hal-9000
+    email_claim: email
+    subject_claim: sub
+    name_claim: name
+    groups_claim: groups
+    admin_groups:
+      - hal:admins
+    team_group_prefix: "hal:"
+
   log_level: INFO
   verbose: false

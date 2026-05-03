@@ -53,6 +53,7 @@ nav:
     - Backup and Restore: guides/backup-restore.md
     - Research Exports: guides/research-exports.md
     - Access Control: guides/access-control.md
+    - SSO and OIDC: guides/sso-oidc.md
     - Review Workflow: guides/review-workflow.md
     - CLI Reference: guides/cli-reference.md
     - Obsidian Integration: guides/obsidian-integration.md

@@ -4,6 +4,7 @@ from pathlib import Path
 
 from hal9000.config import (
     ADAMConfig,
+    AuthConfig,
     CloudConfig,
     DatabaseConfig,
     GatewayConfig,
@@ -302,6 +303,7 @@ class TestSettings:
         assert isinstance(settings.storage, StorageConfig)
         assert isinstance(settings.vector, VectorConfig)
         assert isinstance(settings.gateway, GatewayConfig)
+        assert isinstance(settings.auth, AuthConfig)
         assert settings.environment == "local"
         assert settings.log_level == "INFO"
         assert settings.verbose is False
@@ -368,6 +370,20 @@ class TestSettings:
 
         assert "database.url should use postgresql+psycopg:// for staging/production" in issues
         assert "storage.backend should be s3 for staging/production" in issues
+
+    def test_profile_readiness_issues_for_enabled_auth(self):
+        """Enabled production auth should require OIDC issuer and audience."""
+        settings = Settings(
+            environment="production",
+            database={"url": "postgresql+psycopg://hal@example/db"},
+            storage={"backend": "s3", "bucket": "hal-artifacts"},
+            auth={"enabled": True},
+        )
+
+        issues = settings.profile_readiness_issues()
+
+        assert "auth.oidc_issuer_url is required when auth is enabled" in issues
+        assert "auth.oidc_audience is required when auth is enabled" in issues
 
 
 class TestEnvironmentProfiles:

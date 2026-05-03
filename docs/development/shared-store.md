@@ -24,6 +24,9 @@ hal research create-team materials \
 
 hal research add-team-member materials researcher@example.com
 
+hal research map-oidc-user \
+  --claims-json '{"sub":"s1","email":"researcher@example.com","groups":["hal:materials"]}'
+
 hal research grant-project-access superalloys \
   --team-slug materials \
   --role reviewer
@@ -49,6 +52,11 @@ hal research review-queue \
 hal research review-detail <run-id> \
   --reviewer researcher@example.com \
   --json
+hal research add-review-comment \
+  --target-type output \
+  --target-id <output-id> \
+  --author researcher@example.com \
+  --body "Add stronger citation coverage."
 hal research review-run <run-id> \
   --decision request-changes \
   --reviewer researcher@example.com \
@@ -120,6 +128,7 @@ session.commit()
 
 - Create and fetch research projects by slug.
 - Create users, teams, team memberships, and project permission grants.
+- Map verified OIDC claims into HAL users and team memberships.
 - Persist validated research programs.
 - Create queued research runs with budget and tool policy payloads.
 - Append ordered run events and update run status with lifecycle events.
@@ -132,6 +141,7 @@ session.commit()
 - Export promoted run and project outputs into ADAM, Obsidian, Markdown, JSON,
   and dashboard object-store artifacts.
 - Enforce project permissions for reviewer queue/detail/decision service calls.
+- Persist authorized review annotations on outputs and extracted claims.
 - Bootstrap baseline firm research projects and starter programs idempotently.
 - Summarize operations health across run status, queue depth, worker outcomes,
   tool-call costs/failures, recent failed runs, and recent run activity.

@@ -74,6 +74,32 @@ The service validates reviewer access before recording decisions. Successful
 reviews update every staged output on the run and advance the run lifecycle to
 `promoted`, `rejected`, or `changes_requested`.
 
+## Comments and Annotations
+
+Reviewers and contributors can annotate staged outputs and extracted claims:
+
+```bash
+hal research add-review-comment \
+  --target-type output \
+  --target-id <output-id> \
+  --author reviewer@example.com \
+  --annotation-type change_request \
+  --body "Add stronger citation coverage."
+
+hal research review-comments \
+  --target-type output \
+  --target-id <output-id> \
+  --viewer reviewer@example.com \
+  --json
+
+hal research resolve-review-comment <annotation-id> \
+  --resolver reviewer@example.com
+```
+
+Comment creation requires `contributor` access on the target's project. Resolving
+comments requires `reviewer` access. Open comments are returned by default;
+`--include-resolved` includes resolved history for audit and UI views.
+
 ## Read Access
 
 Run logs, run summaries, and exports can enforce viewer access when an actor is

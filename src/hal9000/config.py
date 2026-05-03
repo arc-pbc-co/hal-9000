@@ -181,6 +181,27 @@ class GatewayConfig(BaseSettings):
     )
 
 
+class AuthConfig(BaseSettings):
+    """Authentication and OIDC claim mapping configuration."""
+
+    enabled: bool = Field(default=False, description="Enable authenticated shared access")
+    provider: str = Field(default="oidc", description="Authentication provider type")
+    oidc_issuer_url: Optional[str] = Field(default=None, description="OIDC issuer URL")
+    oidc_audience: Optional[str] = Field(default=None, description="Expected OIDC audience")
+    email_claim: str = Field(default="email", description="OIDC claim containing user email")
+    subject_claim: str = Field(default="sub", description="OIDC claim containing stable subject")
+    name_claim: str = Field(default="name", description="OIDC claim containing display name")
+    groups_claim: str = Field(default="groups", description="OIDC claim containing group names")
+    admin_groups: list[str] = Field(
+        default_factory=list,
+        description="OIDC groups that map users to global admin",
+    )
+    team_group_prefix: str = Field(
+        default="hal:",
+        description="Only groups with this prefix are synced as HAL team memberships",
+    )
+
+
 class Settings(BaseSettings):
     """Main HAL 9000 settings."""
 
@@ -209,6 +230,7 @@ class Settings(BaseSettings):
     vector: VectorConfig = Field(default_factory=VectorConfig)
     acquisition: AcquisitionConfig = Field(default_factory=AcquisitionConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
+    auth: AuthConfig = Field(default_factory=AuthConfig)
 
     # Anthropic API configuration
     anthropic_api_key: Optional[str] = Field(
@@ -265,6 +287,11 @@ class Settings(BaseSettings):
                 issues.append("storage.bucket is required for staging/production")
             if self.vector.backend != "pgvector":
                 issues.append("vector.backend should be pgvector for staging/production")
+            if self.auth.enabled:
+                if not self.auth.oidc_issuer_url:
+                    issues.append("auth.oidc_issuer_url is required when auth is enabled")
+                if not self.auth.oidc_audience:
+                    issues.append("auth.oidc_audience is required when auth is enabled")
 
         return issues
 

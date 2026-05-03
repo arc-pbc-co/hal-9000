@@ -15,6 +15,7 @@ from hal9000.db.models import (
     ResearchRun,
     ResearchRunEvent,
     ResearchToolCall,
+    ReviewAnnotation,
     ReviewDecision,
     Topic,
 )
@@ -36,6 +37,7 @@ __all__ = [
     "ResearchRun",
     "ResearchRunEvent",
     "ResearchToolCall",
+    "ReviewAnnotation",
     "ResearchStore",
     "ReviewDecision",
     "Topic",

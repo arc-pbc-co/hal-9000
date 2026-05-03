@@ -18,6 +18,7 @@ from hal9000.db.models import (
     ResearchProject,
     ResearchRun,
     ResearchToolCall,
+    ReviewAnnotation,
     ReviewDecision,
     Team,
     TeamMembership,
@@ -74,6 +75,7 @@ class TestSharedResearchStoreModels:
         assert "teams" in table_names
         assert "team_memberships" in table_names
         assert "project_permissions" in table_names
+        assert "review_annotations" in table_names
 
     def test_identity_and_project_permission_relationships(self, temp_directory: Path):
         """Users and teams should connect to project permission grants."""
@@ -112,6 +114,45 @@ class TestSharedResearchStoreModels:
             assert saved.permissions[0].role == "reviewer"
             assert team.memberships[0].user.email == "researcher@example.com"
             assert user.team_memberships[0].team.slug == "materials"
+        finally:
+            session.close()
+
+    def test_review_annotation_model(self, temp_directory: Path):
+        """Review annotations should attach to output or claim targets."""
+        _, session_factory = init_db(f"sqlite:///{temp_directory / 'annotations.db'}")
+        session = session_factory()
+
+        try:
+            project = ResearchProject(name="Review", slug="review")
+            user = UserAccount(email="reviewer@example.com")
+            run = ResearchRun(project=project, objective="Review output.")
+            output = ResearchOutput(
+                project=project,
+                run=run,
+                output_type="research_brief",
+                title="Brief",
+            )
+            session.add_all([project, user, output])
+            session.flush()
+
+            annotation = ReviewAnnotation(
+                project=project,
+                run=run,
+                target_type="output",
+                target_id=output.id,
+                author=user,
+                author_email=user.email,
+                body="Add a stronger citation.",
+            )
+            session.add(annotation)
+            session.commit()
+
+            saved = session.query(ReviewAnnotation).one()
+
+            assert saved.project.slug == "review"
+            assert saved.run.objective == "Review output."
+            assert saved.author.email == "reviewer@example.com"
+            assert saved.status == "open"
         finally:
             session.close()
 

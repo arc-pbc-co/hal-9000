@@ -51,6 +51,8 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add backup/restore plan for Postgres and object storage.
 - [x] Add foundational users, teams, memberships, and project permission grants.
 - [x] Add project permission enforcement for review service/API entry points.
+- [x] Add SSO/OIDC planning and verified-claim to user/team mapping.
+- [x] Add comments and annotations on outputs and claims for review UI workflows.
 
 ### In Progress
 
@@ -129,7 +131,7 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add staged outputs and review decisions in the data model.
 - [x] Add review workflow commands/API: promote, reject, request changes.
 - [x] Add authorized review queue/detail/decision service API.
-- [ ] Add comments and annotations on outputs and claims.
+- [x] Add comments and annotations on outputs and claims.
 - [ ] Add collections, saved searches, and shared project views.
 - [ ] Add notification hooks for review-ready runs.
 - [ ] Add audit views for run history and promotion decisions.
@@ -137,7 +139,7 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 ### Phase G: Firmwide Access and Governance
 
 - [x] Add users, teams, roles, and permissions.
-- [ ] Add SSO/OIDC integration plan.
+- [x] Add SSO/OIDC integration plan.
 - [x] Add project visibility and access enforcement for review workflows.
 - [ ] Add retention policy for PDFs, artifacts, and logs.
 - [ ] Add secrets management for providers and model APIs.
@@ -230,6 +232,8 @@ Implemented in this slice:
 - `docs/guides/backup-restore.md` now defines the first Postgres and object-storage backup/restore runbook.
 - `UserAccount`, `Team`, `TeamMembership`, and `ProjectPermission` now provide the first durable governance model for project access.
 - `ResearchAuthorizer` and `ResearchReviewService` now enforce reviewer access for review queue, detail, and decision workflows.
+- `OIDCIdentityMapper` now maps verified OIDC claims into HAL users, global admin role, and HAL team memberships.
+- `ReviewAnnotationService` now supports authorized comments and annotations on outputs and extracted claims.
 
 ## Milestone 3: Research Run Orchestrator
 

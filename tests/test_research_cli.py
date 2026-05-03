@@ -6,6 +6,7 @@ from click.testing import CliRunner
 
 from hal9000.cli import cli
 from hal9000.db.models import (
+    ResearchOutput,
     ResearchProgramRecord,
     ResearchProject,
     ResearchRun,
@@ -128,6 +129,21 @@ def test_research_cli_project_program_and_run_flow(temp_directory: Path):
     )
     assert grant_result.exit_code == 0, grant_result.output
     assert "Project access granted" in grant_result.output
+
+    map_oidc_result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(config_path),
+            "research",
+            "map-oidc-user",
+            "--claims-json",
+            '{"sub": "oidc-researcher", "email": "researcher@example.com", "name": "Researcher", "groups": ["hal:materials"]}',
+        ],
+        obj={},
+    )
+    assert map_oidc_result.exit_code == 0, map_oidc_result.output
+    assert "OIDC user mapped" in map_oidc_result.output
 
     save_result = runner.invoke(
         cli,
@@ -349,12 +365,56 @@ def test_research_cli_project_program_and_run_flow(temp_directory: Path):
     session = get_session(f"sqlite:///{db_path}")
     try:
         run = session.get(ResearchRun, run_id)
+        output_id = session.query(ResearchOutput).filter_by(run_id=run_id).first().id
         assert run.status == "staged"
         assert [event.sequence for event in run.events] == list(range(1, 11))
         assert "retrieval.context.attached" in [event.event_type for event in run.events]
         assert "corpus.prepared" in [event.event_type for event in run.events]
     finally:
         session.close()
+
+    add_comment_result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(config_path),
+            "research",
+            "add-review-comment",
+            "--target-type",
+            "output",
+            "--target-id",
+            output_id,
+            "--author",
+            "researcher@example.com",
+            "--body",
+            "Add one more citation before promotion.",
+            "--annotation-type",
+            "change_request",
+        ],
+        obj={},
+    )
+    assert add_comment_result.exit_code == 0, add_comment_result.output
+    assert "Review comment added" in add_comment_result.output
+
+    comments_result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(config_path),
+            "research",
+            "review-comments",
+            "--target-type",
+            "output",
+            "--target-id",
+            output_id,
+            "--viewer",
+            "researcher@example.com",
+            "--json",
+        ],
+        obj={},
+    )
+    assert comments_result.exit_code == 0, comments_result.output
+    assert "Add one more citation" in comments_result.output
 
     review_queue_result = runner.invoke(
         cli,
