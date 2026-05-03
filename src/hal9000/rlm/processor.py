@@ -10,18 +10,17 @@ Implements patterns from the RLM paper:
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Callable, Optional
 
 from anthropic import Anthropic
 
 from hal9000.rlm.prompts import (
+    AGGREGATION_PROMPT,
     DOCUMENT_ANALYSIS_SYSTEM,
-    TOPIC_EXTRACTION_PROMPT,
-    SUMMARY_PROMPT,
-    METHODOLOGY_PROMPT,
     FINDINGS_PROMPT,
     MATERIALS_SCIENCE_PROMPT,
-    AGGREGATION_PROMPT,
+    SUMMARY_PROMPT,
+    TOPIC_EXTRACTION_PROMPT,
     format_prompt,
 )
 
@@ -103,6 +102,7 @@ class RLMProcessor:
         chunk_size: int = 50000,
         chunk_overlap: int = 1000,
         max_concurrent_calls: int = 5,
+        llm_call_callback: Optional[Callable[[dict[str, object]], None]] = None,
     ):
         """
         Initialize the RLM processor.
@@ -119,6 +119,8 @@ class RLMProcessor:
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.max_concurrent_calls = max_concurrent_calls
+        self.llm_call_callback = llm_call_callback
+        self.llm_calls_made = 0
 
     def process_document(
         self,
@@ -255,6 +257,8 @@ class RLMProcessor:
             result.raw_response = topics_response
 
         except Exception as e:
+            if getattr(e, "is_budget_exceeded", False):
+                raise
             logger.error(f"Error processing chunk {chunk_index}: {e}")
             result.error = str(e)
 
@@ -322,6 +326,8 @@ class RLMProcessor:
                         analysis.primary_topics = agg_data["primary_topics"]
 
             except Exception as e:
+                if getattr(e, "is_budget_exceeded", False):
+                    raise
                 logger.error(f"Error in aggregation: {e}")
                 analysis.processing_errors.append(f"Aggregation: {e}")
 
@@ -329,6 +335,15 @@ class RLMProcessor:
 
     def _call_llm(self, prompt: str, max_tokens: int = 4096) -> str:
         """Make an LLM call."""
+        call_payload = {
+            "model": self.model,
+            "prompt_chars": len(prompt),
+            "max_tokens": max_tokens,
+            "call_index": self.llm_calls_made + 1,
+        }
+        if self.llm_call_callback:
+            self.llm_call_callback(call_payload)
+        self.llm_calls_made += 1
         response = self.client.messages.create(
             model=self.model,
             max_tokens=max_tokens,

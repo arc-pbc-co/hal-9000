@@ -1,13 +1,15 @@
 """Tests for bounded research run execution."""
 
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
 
-from hal9000.db.models import Document, ResearchOutput, init_db
+from hal9000.db.models import Document, ResearchOutput, init_db, utc_now
 from hal9000.db.store import ResearchStore
 from hal9000.research import BoundedResearchWorker, load_program
 from hal9000.research.acquisition import WorkerAcquisitionResult
+from hal9000.research.budget import BudgetExceededError
 from hal9000.research.pipeline import ResearchCorpusPipeline
 from hal9000.vector import FakeEmbeddingProvider, VectorRepository
 
@@ -24,9 +26,47 @@ class FakeAcquisitionRunner:
         )
         self.calls: list[tuple[str, int]] = []
 
-    def acquire(self, topic: str, max_papers: int) -> WorkerAcquisitionResult:
+    def acquire(
+        self,
+        topic: str,
+        max_papers: int,
+        progress_callback=None,
+        llm_call_callback=None,
+    ) -> WorkerAcquisitionResult:
         """Record a fake acquisition call."""
         self.calls.append((topic, max_papers))
+        if progress_callback:
+            progress_callback("Searching", 0, 1)
+            progress_callback("Searching", 1, 1)
+        return self.result
+
+
+class FakeLLMAcquisitionRunner(FakeAcquisitionRunner):
+    """Fake acquisition runner that emits LLM call callbacks."""
+
+    def __init__(self, llm_calls: int):
+        super().__init__()
+        self.llm_calls = llm_calls
+
+    def acquire(
+        self,
+        topic: str,
+        max_papers: int,
+        progress_callback=None,
+        llm_call_callback=None,
+    ) -> WorkerAcquisitionResult:
+        """Emit deterministic LLM call callbacks."""
+        self.calls.append((topic, max_papers))
+        if llm_call_callback:
+            for index in range(self.llm_calls):
+                llm_call_callback(
+                    {
+                        "model": "fake-model",
+                        "prompt_chars": 100 + index,
+                        "max_tokens": 1000,
+                        "call_index": index + 1,
+                    }
+                )
         return self.result
 
 
@@ -246,6 +286,7 @@ def test_bounded_worker_runs_acquisition_with_tool_call_accounting(temp_director
         assert calls[0].tool_name == "acquisition.acquire"
         assert calls[0].status == "completed"
         assert "tool.acquisition.completed" in [event.event_type for event in run.events]
+        assert "acquisition.progress" in [event.event_type for event in run.events]
     finally:
         session.close()
 
@@ -282,5 +323,71 @@ def test_bounded_worker_skips_acquisition_when_tool_policy_disallows_it(
         assert result.acquisition is None
         assert store.list_tool_calls(run) == []
         assert "acquisition.skipped" in [event.event_type for event in run.events]
+    finally:
+        session.close()
+
+
+def test_bounded_worker_enforces_runtime_budget(temp_directory: Path):
+    """The worker should fail a running job that has exceeded runtime budget."""
+    _, session_factory = init_db(f"sqlite:///{temp_directory / 'worker_runtime_budget.db'}")
+    session = session_factory()
+
+    try:
+        repo_root = Path(__file__).resolve().parents[1]
+        program = load_program(repo_root / "templates/research/programs/literature-review.md")
+
+        store = ResearchStore(session)
+        record = store.save_program(program)
+        run = store.create_run(
+            objective="Expired run.",
+            program=record,
+            budget={"max_runtime_minutes": 1},
+        )
+        run.status = "running"
+        run.started_at = utc_now() - timedelta(minutes=2)
+        session.flush()
+
+        with pytest.raises(BudgetExceededError, match="Runtime budget exceeded"):
+            BoundedResearchWorker(store, actor="runtime-worker").execute_run(run.id)
+        session.commit()
+
+        assert run.status == "failed"
+        assert "budget.runtime.exceeded" in [event.event_type for event in run.events]
+    finally:
+        session.close()
+
+
+def test_bounded_worker_enforces_llm_call_budget(temp_directory: Path):
+    """The worker should fail acquisition when LLM calls exceed budget."""
+    _, session_factory = init_db(f"sqlite:///{temp_directory / 'worker_llm_budget.db'}")
+    session = session_factory()
+
+    try:
+        repo_root = Path(__file__).resolve().parents[1]
+        program = load_program(repo_root / "templates/research/programs/literature-review.md")
+
+        store = ResearchStore(session)
+        record = store.save_program(program)
+        run = store.create_run(
+            objective="LLM budgeted run.",
+            program=record,
+            budget={"max_papers": 2, "max_downloads": 2, "max_llm_calls": 1},
+            tool_policy={"allowed_tools": ["acquire", "rlm"]},
+        )
+
+        with pytest.raises(BudgetExceededError, match="LLM call budget exceeded"):
+            BoundedResearchWorker(
+                store,
+                actor="llm-budget-worker",
+                acquisition_runner=FakeLLMAcquisitionRunner(llm_calls=2),
+            ).execute_run(run.id)
+        session.commit()
+
+        calls = store.list_tool_calls(run)
+
+        assert [call.tool_name for call in calls] == ["acquisition.acquire", "llm.call"]
+        assert calls[0].status == "failed"
+        assert run.status == "failed"
+        assert "budget.llm_calls.exceeded" in [event.event_type for event in run.events]
     finally:
         session.close()

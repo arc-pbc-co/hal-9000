@@ -90,7 +90,7 @@ session.commit()
 - Persist validated research programs.
 - Create queued research runs with budget and tool policy payloads.
 - Append ordered run events and update run status with lifecycle events.
-- Record durable worker tool calls for acquisition and future model/tool usage.
+- Record durable worker tool calls for acquisition and RLM LLM-call usage.
 - Provide CLI commands for creating projects, saving programs, queuing runs,
   listing runs, inspecting run logs, appending events, and advancing run state.
 - Stage generated research outputs.

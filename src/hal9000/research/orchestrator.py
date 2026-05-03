@@ -68,9 +68,13 @@ class BoundedResearchWorker:
                     actor=self.actor,
                 )
 
+            self._require_runtime_budget(run, "worker.start")
             acquisition_result = self._run_acquisition(run)
+            self._require_runtime_budget(run, "corpus.prepare")
             corpus_result = self._prepare_corpus(run)
+            self._require_runtime_budget(run, "retrieval.context")
             retrieval_context = self._build_retrieval_context(run)
+            self._require_runtime_budget(run, "outputs.stage")
             staged = self.output_generator.stage_contract_outputs(
                 run,
                 created_by=self.actor,
@@ -146,7 +150,12 @@ class BoundedResearchWorker:
             payload={"tool_call_id": tool_call.id, "max_papers": max_papers},
         )
         try:
-            result = self.acquisition_runner.acquire(run.objective, max_papers=max_papers)
+            result = self.acquisition_runner.acquire(
+                run.objective,
+                max_papers=max_papers,
+                progress_callback=self._progress_callback(run),
+                llm_call_callback=self._llm_call_callback(run),
+            )
         except Exception as exc:
             self.store.finish_tool_call(
                 tool_call,
@@ -178,6 +187,78 @@ class BoundedResearchWorker:
             payload={"tool_call_id": tool_call.id, **result.to_dict()},
         )
         return result
+
+    def _require_runtime_budget(self, run: ResearchRun, phase: str) -> None:
+        """Ensure the run has runtime budget remaining."""
+        try:
+            RunBudgetTracker(run).require_runtime_budget()
+        except BudgetExceededError as exc:
+            self.store.append_run_event(
+                run,
+                event_type="budget.runtime.exceeded",
+                message=str(exc),
+                actor=self.actor,
+                payload={"phase": phase},
+            )
+            raise
+
+    def _progress_callback(self, run: ResearchRun):
+        """Create a callback that records acquisition progress events."""
+        def record_progress(stage: str, current: int, total: int) -> None:
+            self._require_runtime_budget(run, f"acquisition.{stage}")
+            self.store.append_run_event(
+                run,
+                event_type="acquisition.progress",
+                message=f"{stage}: {current}/{total}",
+                actor=self.actor,
+                payload={"stage": stage, "current": current, "total": total},
+            )
+
+        return record_progress
+
+    def _llm_call_callback(self, run: ResearchRun):
+        """Create a callback that enforces and records LLM-call budget."""
+        def record_llm_call(payload: dict[str, object]) -> None:
+            self._require_runtime_budget(run, "llm.call")
+            used_calls = len(
+                [
+                    call
+                    for call in self.store.list_tool_calls(run)
+                    if call.tool_name == "llm.call"
+                ]
+            )
+            try:
+                RunBudgetTracker(run).require_llm_call_budget(used_calls)
+            except BudgetExceededError as exc:
+                self.store.append_run_event(
+                    run,
+                    event_type="budget.llm_calls.exceeded",
+                    message=str(exc),
+                    actor=self.actor,
+                    payload={"used_calls": used_calls, **payload},
+                )
+                raise
+
+            call = self.store.start_tool_call(
+                run,
+                tool_name="llm.call",
+                actor=self.actor,
+                input=payload,
+            )
+            self.store.finish_tool_call(
+                call,
+                status="completed",
+                output={"budget_reserved": True},
+            )
+            self.store.append_run_event(
+                run,
+                event_type="tool.llm_call.recorded",
+                message=f"Recorded LLM call {used_calls + 1}.",
+                actor=self.actor,
+                payload={"tool_call_id": call.id, **payload},
+            )
+
+        return record_llm_call
 
     def _prepare_corpus(self, run: ResearchRun):
         """Prepare corpus records before retrieval/output generation."""

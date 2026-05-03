@@ -35,10 +35,13 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add durable tool-call accounting records for bounded worker tools.
 - [x] Add budget/tool-policy checks around live acquisition.
 - [x] Connect live acquisition/search/download execution into the worker behind `execute-run --live-acquisition`.
+- [x] Add runtime budget checks around major worker phases.
+- [x] Add LLM-call budget enforcement and `llm.call` tool-call records during RLM processing.
+- [x] Add acquisition progress telemetry events during live worker acquisition.
 
 ### In Progress
 
-- [ ] Add budget enforcement for runtime and LLM calls.
+- [ ] Add richer acquisition processing telemetry for per-document outcomes and failures.
 
 ### Remaining
 
@@ -94,7 +97,8 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add budget enforcement for acquisition papers/downloads.
 - [x] Add tool-call records and first-pass cost accounting fields.
 - [x] Connect live acquisition/search/download execution into the worker.
-- [ ] Add budget enforcement for runtime and LLM calls.
+- [x] Add budget enforcement for runtime and LLM calls.
+- [ ] Add richer acquisition processing telemetry for per-document outcomes and failures.
 - [ ] Add retry, cancellation, and timeout handling.
 - [ ] Add scheduled or queued worker process.
 
@@ -199,6 +203,8 @@ Implemented in this slice:
 - `ResearchCorpusPipeline` prepares completed documents for runs by chunking text, embedding chunks, extracting first-pass claims, and feeding outputs in the same worker execution.
 - `ResearchToolCall` records now track auditable worker tool invocations, starting with live acquisition.
 - `BoundedResearchWorker` can run live acquisition through `hal research execute-run --live-acquisition`, constrained by run budget and tool policy.
+- Runtime budget is checked before major worker phases, and RLM model calls emit `llm.call` tool-call records before provider execution.
+- Live acquisition emits `acquisition.progress` run events for search, download, and processing stages.
 
 ## Milestone 3: Research Run Orchestrator
 
@@ -251,4 +257,4 @@ Deliverables:
 ## Immediate Next Tasks
 
 - Add environment profiles for local, staging, and production.
-- Add runtime and LLM-call budget enforcement around the worker flow.
+- Add per-document acquisition processing telemetry and failure accounting.

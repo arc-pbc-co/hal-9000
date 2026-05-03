@@ -301,6 +301,8 @@ class AcquisitionOrchestrator:
             return document
 
         except Exception as e:
+            if getattr(e, "is_budget_exceeded", False):
+                raise
             logger.error(f"Failed to process paper: {e}")
             return None
 
