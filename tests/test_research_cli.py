@@ -126,6 +126,35 @@ def test_research_cli_project_program_and_run_flow(temp_directory: Path):
     assert "CLI Program" in list_result.output
     assert "queued" in list_result.output
 
+    observe_result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(config_path),
+            "research",
+            "observe",
+        ],
+        obj={},
+    )
+    assert observe_result.exit_code == 0, observe_result.output
+    assert "Research Operations" in observe_result.output
+    assert "Queue Health" in observe_result.output
+
+    observe_json_result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(config_path),
+            "research",
+            "observe",
+            "--json",
+        ],
+        obj={},
+    )
+    assert observe_json_result.exit_code == 0, observe_json_result.output
+    assert '"run_status_counts"' in observe_json_result.output
+    assert '"queue"' in observe_json_result.output
+
     log_event_result = runner.invoke(
         cli,
         [

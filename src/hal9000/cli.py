@@ -1128,6 +1128,131 @@ def research_runs(
         session.close()
 
 
+@research.command("observe")
+@click.option("--limit", default=10, type=int, help="Maximum recent rows per section")
+@click.option("--json", "as_json", is_flag=True, help="Emit the summary as JSON")
+@click.pass_context
+def research_observe(ctx: click.Context, limit: int, as_json: bool) -> None:
+    """Show operational health for research runs and workers."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.observability import ResearchObservabilityService
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        summary = ResearchObservabilityService(store).summarize(limit=limit)
+        if as_json:
+            console.print(json.dumps(summary.to_dict(), indent=2, sort_keys=True))
+            return
+
+        _render_observability_summary(summary)
+    finally:
+        session.close()
+
+
+def _render_observability_summary(summary) -> None:
+    """Render a compact operations dashboard."""
+    status_table = Table(title="Research Operations")
+    status_table.add_column("Run Status", style="cyan")
+    status_table.add_column("Count", justify="right", style="green")
+    for status, count in sorted(summary.run_status_counts.items()):
+        status_table.add_row(status, str(count))
+    console.print(status_table)
+
+    queue = summary.queue
+    queue_table = Table(title="Queue Health")
+    queue_table.add_column("Metric", style="cyan")
+    queue_table.add_column("Value", style="green")
+    queue_table.add_row("Queued", str(queue.queued))
+    queue_table.add_row("Running", str(queue.running))
+    queue_table.add_row("Cancel Requested", str(queue.cancel_requested))
+    queue_table.add_row("Oldest Queued", queue.oldest_queued_at or "-")
+    console.print(queue_table)
+
+    tool_table = Table(title="Tool Calls")
+    tool_table.add_column("Metric", style="cyan")
+    tool_table.add_column("Value", style="green")
+    tool_table.add_row("Total", str(summary.tool_calls.total))
+    tool_table.add_row("Total Cost USD", f"{summary.tool_calls.total_cost_usd:.4f}")
+    tool_table.add_row(
+        "By Status",
+        ", ".join(
+            f"{status}:{count}" for status, count in sorted(summary.tool_calls.by_status.items())
+        )
+        or "-",
+    )
+    tool_table.add_row(
+        "By Tool",
+        ", ".join(
+            f"{tool}:{count}" for tool, count in sorted(summary.tool_calls.by_tool.items())
+        )
+        or "-",
+    )
+    console.print(tool_table)
+
+    outcomes = Table(title="Recent Worker Outcomes")
+    outcomes.add_column("Run", style="cyan")
+    outcomes.add_column("Type", style="green")
+    outcomes.add_column("Actor", style="blue")
+    outcomes.add_column("Message")
+    for event in summary.recent_worker_outcomes:
+        outcomes.add_row(
+            event.run_id[:8],
+            event.event_type,
+            event.actor or "-",
+            event.message or "-",
+        )
+    console.print(outcomes)
+
+    failures = Table(title="Recent Failures")
+    failures.add_column("Run", style="cyan")
+    failures.add_column("Project", style="blue")
+    failures.add_column("Error", style="red")
+    failures.add_column("Objective")
+    for failure in summary.recent_failures:
+        failures.add_row(
+            failure.run.id[:8],
+            failure.run.project_slug or "-",
+            failure.error_message or "-",
+            failure.run.objective[:80],
+        )
+    console.print(failures)
+
+    failed_tools = Table(title="Recent Tool Failures")
+    failed_tools.add_column("Run", style="cyan")
+    failed_tools.add_column("#", justify="right", style="magenta")
+    failed_tools.add_column("Tool", style="green")
+    failed_tools.add_column("Error", style="red")
+    for call in summary.tool_calls.recent_failures:
+        failed_tools.add_row(
+            call.run_id[:8],
+            str(call.sequence),
+            call.tool_name,
+            call.error_message or "-",
+        )
+    console.print(failed_tools)
+
+    recent_runs = Table(title="Recent Runs")
+    recent_runs.add_column("Run", style="cyan")
+    recent_runs.add_column("Status", style="green")
+    recent_runs.add_column("Project", style="blue")
+    recent_runs.add_column("Objective")
+    for run in summary.recent_runs:
+        recent_runs.add_row(
+            run.id[:8],
+            run.status,
+            run.project_slug or "-",
+            run.objective[:80],
+        )
+    console.print(recent_runs)
+
+
 @research.command("run-log")
 @click.argument("run_id")
 @click.pass_context

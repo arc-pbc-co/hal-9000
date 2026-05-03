@@ -29,6 +29,8 @@ hal research save-program ./program.md --project-slug superalloys
 hal research bootstrap --project-slug firm-research --owner research@example.com
 hal research queue-run --program-id <saved-program-id>
 hal research runs --project-slug superalloys
+hal research observe
+hal research observe --json
 hal research run-log <run-id>
 hal research run-summary <run-id>
 hal research run-summary <run-id> --json
@@ -53,6 +55,9 @@ document chunks through the configured embedding provider and returns the first
 semantic memory results for a project or run. During execution, the worker now
 prepares completed local documents into chunks, embeddings, first-pass claims,
 retrieval context, and staged outputs when corpus records are available.
+`observe` gives operators a compact dashboard over run status counts, queue
+health, tool-call totals/costs, recent worker outcomes, recent failures, and
+recent runs. Use `--json` for downstream dashboards or API responses.
 `bootstrap` creates or reuses a baseline firm project and starter research
 programs from `templates/research/programs`, making it safe to run repeatedly
 when setting up local, staging, or production stores.

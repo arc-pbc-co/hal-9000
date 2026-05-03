@@ -28,6 +28,7 @@ hal research queue-run \
   --initiated-by research@example.com
 
 hal research runs --project-slug superalloys
+hal research observe
 hal research run-log <run-id>
 hal research run-summary <run-id>
 hal research review-run <run-id> \
@@ -108,6 +109,8 @@ session.commit()
 - Record run-level review decisions across every staged output and advance runs
   to `promoted`, `rejected`, or `changes_requested`.
 - Bootstrap baseline firm research projects and starter programs idempotently.
+- Summarize operations health across run status, queue depth, worker outcomes,
+  tool-call costs/failures, recent failed runs, and recent run activity.
 - Provide CLI commands for creating projects, saving programs, queuing runs,
   bootstrapping starter programs, listing runs, inspecting run logs/summaries,
   reviewing staged runs, appending events, and advancing run state.

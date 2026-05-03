@@ -45,11 +45,12 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add seed/bootstrap commands for firm projects and starter programs.
 - [x] Add retry, cancellation, and timeout handling for worker execution.
 - [x] Add queued worker execution command for scheduler/process-manager deployments.
+- [x] Add observability CLI/API summary for run status, queue health, tool calls, costs, failures, and worker outcomes.
 
 ### In Progress
 
-- [ ] Add observability dashboards/API for run status, tool calls, cost, and failures.
 - [ ] Add deployment manifests for API, workers, database, object store, and docs.
+- [ ] Add firm-wide export targets for ADAM, Obsidian, Markdown, JSON, and dashboards.
 
 ### Remaining
 
@@ -145,7 +146,7 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [ ] Package API/gateway, worker, scheduler, and docs services.
 - [ ] Add Docker/Compose for local firmwide stack.
 - [ ] Add production deployment manifests.
-- [ ] Add observability: run metrics, queue metrics, cost, errors, latency.
+- [x] Add observability: run metrics, queue metrics, cost, errors, latency.
 - [ ] Add backup/restore plan for Postgres and object storage.
 - [ ] Add CI checks for tests, docs, migrations, and lint/type checks.
 - [ ] Add release process and changelog.
@@ -221,6 +222,7 @@ Implemented in this slice:
 - `hal research bootstrap` now creates or reuses the baseline firm research project and starter programs idempotently.
 - `BoundedResearchWorker` now supports bounded phase retries, cancellation acknowledgement, and phase timeout accounting.
 - `hal research work-queue` now executes queued runs once, providing the first scheduler/process-manager entry point.
+- `ResearchObservabilityService` and `hal research observe` now summarize run status counts, queue health, tool-call cost/failure state, recent worker outcomes, recent failures, and recent runs.
 
 ## Milestone 3: Research Run Orchestrator
 
@@ -276,5 +278,5 @@ Deliverables:
 
 ## Immediate Next Tasks
 
-- Add observability dashboards/API for run status, tool calls, cost, and failures.
 - Add deployment manifests for API, workers, database, object store, and docs.
+- Add firm-wide export targets for ADAM, Obsidian, Markdown, JSON, and dashboards.
