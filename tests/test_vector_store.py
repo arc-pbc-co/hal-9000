@@ -3,7 +3,15 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from hal9000.db.models import Base, Document, DocumentChunk
+from hal9000.db.models import (
+    Base,
+    Document,
+    DocumentChunk,
+    ExtractedClaim,
+    ResearchOutput,
+    ResearchProject,
+    ResearchRun,
+)
 from hal9000.vector import FakeEmbeddingProvider, VectorRepository
 
 
@@ -129,5 +137,78 @@ def test_vector_repository_searches_chunks_by_cosine_similarity():
         assert results[0].score > results[1].score
         assert results[0].document_title == "Search Paper"
         assert results[0].as_context_item()["content"].startswith("Creep resistance")
+    finally:
+        session.close()
+
+
+def test_vector_repository_searches_claims_and_outputs_semantically():
+    """Semantic memory search should cover extracted claims and outputs."""
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+
+    try:
+        project = ResearchProject(name="Retrieval", slug="retrieval")
+        run = ResearchRun(project=project, objective="Search memory.")
+        document = Document(
+            source_path="/papers/memory.pdf",
+            source_type="local",
+            file_hash="h" * 64,
+            title="Memory Paper",
+        )
+        chunk = DocumentChunk(
+            document=document,
+            run=run,
+            chunk_index=0,
+            text_hash="i" * 64,
+            content="Creep resistance improves with single crystal structure.",
+        )
+        session.add_all([project, chunk])
+        session.flush()
+
+        creep_claim = ExtractedClaim(
+            document=document,
+            chunk=chunk,
+            run=run,
+            claim_text="Single crystal structure improves creep resistance.",
+            evidence_text="Creep resistance improves with single crystal structure.",
+        )
+        output = ResearchOutput(
+            project=project,
+            run=run,
+            output_type="research_brief",
+            title="Creep Resistance Brief",
+            content="Single crystal turbine materials show better creep resistance.",
+        )
+        session.add_all([creep_claim, output])
+        session.flush()
+
+        provider = FakeEmbeddingProvider(dimension=8)
+        repository = VectorRepository(session)
+
+        claim_results = repository.search_claims(
+            "single crystal creep",
+            provider,
+            project_id=project.id,
+        )
+        output_results = repository.search_outputs(
+            "turbine creep resistance",
+            provider,
+            run_id=run.id,
+        )
+        memory_results = repository.search_memory(
+            "creep resistance",
+            provider,
+            targets={"claims", "outputs"},
+            project_id=project.id,
+            limit=2,
+        )
+
+        assert claim_results[0].target_type == "claim"
+        assert claim_results[0].target_id == creep_claim.id
+        assert output_results[0].target_type == "output"
+        assert output_results[0].target_id == output.id
+        assert {result.target_type for result in memory_results} == {"claim", "output"}
+        assert memory_results[0].as_context_item()["content"]
     finally:
         session.close()

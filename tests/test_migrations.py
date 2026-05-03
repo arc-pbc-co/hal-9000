@@ -33,6 +33,15 @@ def test_alembic_upgrade_head_creates_current_schema(temp_directory: Path):
     assert "team_memberships" in table_names
     assert "project_permissions" in table_names
     assert "review_annotations" in table_names
+    assert "corpus_dedupe_reports" in table_names
+    assert "research_graph_edges" in table_names
+    assert "research_output_versions" in table_names
+    assert "research_collections" in table_names
+    assert "research_collection_items" in table_names
+    assert "saved_searches" in table_names
+    assert "shared_project_views" in table_names
+    assert "research_notifications" in table_names
+    assert "research_audit_events" in table_names
 
 
 def test_alembic_autogenerate_is_clean(temp_directory: Path):

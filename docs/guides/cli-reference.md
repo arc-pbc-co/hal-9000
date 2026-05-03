@@ -36,6 +36,21 @@ hal research queue-run --program-id <saved-program-id>
 hal research runs --project-slug superalloys
 hal research observe
 hal research observe --json
+hal research harden-corpus --refresh-policy interval --refresh-interval-days 30
+hal research dedupe-report --created-by curator@example.com --json
+hal research create-collection firm-research --name "Demo Collection"
+hal research add-collection-item firm-research demo-collection --target-type output --target-id <output-id>
+hal research collections firm-research --json
+hal research save-search firm-research --name "Creep Claims" --query "single crystal creep" --target memory
+hal research saved-searches firm-research --json
+hal research create-shared-view firm-research --name "Review Queue" --view-type review_queue
+hal research shared-views firm-research --json
+hal research notify-review-ready <run-id> --recipient reviewer@example.com --channel slack
+hal research notifications --recipient reviewer@example.com --json
+hal research deliver-notifications --channel slack --limit 20
+hal research slack-command --user reviewer@example.com --text "review firm-research" --json
+hal research sync-sheets firm-research --target review_queue --spreadsheet-id <sheet-id> --range-name "Review!A1" --actor reviewer@example.com --dry-run --json
+hal research audit-events --project-slug firm-research --json
 hal research run-log <run-id>
 hal research run-summary <run-id> --as-user reviewer@example.com
 hal research run-summary <run-id> --json --as-user reviewer@example.com
@@ -47,10 +62,15 @@ hal research resolve-review-comment <annotation-id> --resolver reviewer@example.
 hal research review-run <run-id> --decision promote --reviewer reviewer@example.com
 hal research review-run <run-id> --decision reject --reviewer reviewer@example.com
 hal research review-run <run-id> --decision request-changes --reviewer reviewer@example.com
+hal research output-versions <output-id>
+hal research diff-output <output-id> --from-version 1 --to-version 2
 hal research export-run <run-id> --target markdown
 hal research export-run <run-id> --target json --json
 hal research export-project firm-research --target dashboard --json
 hal research search-chunks "single crystal creep resistance" --project-slug superalloys
+hal research search-memory "single crystal creep resistance" --target claims --target outputs --json
+hal research add-graph-edge --source-type claim --source-id <claim-id> --relationship studies_material --target-type material --target-id "CMSX-4"
+hal research graph-edges --relationship supports --json
 hal research log-run-event <run-id> --event-type tool.search
 hal research update-run <run-id> --status running
 hal research execute-run <run-id> --actor hal-worker
@@ -68,11 +88,29 @@ document chunks through the configured embedding provider and returns the first
 semantic memory results for a project or run. During execution, the worker now
 prepares completed local documents into chunks, embeddings, first-pass claims,
 retrieval context, and staged outputs when corpus records are available.
+`search-memory` extends retrieval to extracted claims and staged/promoted outputs
+using the same embedding provider contract.
+`add-graph-edge` and `graph-edges` manage typed research relationships such as
+`cites`, `supports`, `contradicts`, `uses_method`, `studies_material`, and
+`reports_property` across documents, chunks, claims, outputs, and literal
+material/method/property nodes.
 `create-user`, `create-team`, `add-team-member`, `grant-project-access`, and
 `map-oidc-user` seed the first firm-wide identity and project permission records.
 `observe` gives operators a compact dashboard over run status counts, queue
 health, tool-call totals/costs, recent worker outcomes, recent failures, and
 recent runs. Use `--json` for downstream dashboards or API responses.
+`harden-corpus` attaches stable document source identity, version fields, refresh
+policy, normalized citations, and source quality scores. `dedupe-report`
+persists likely duplicate-source groups for corpus curation and downstream app
+surfaces.
+`create-collection`, `add-collection-item`, and `collections` manage shared
+project collections. `save-search` and `saved-searches` preserve reusable
+retrieval queries. `create-shared-view` and `shared-views` define saved dashboard,
+review, search, collection, or audit views. `notify-review-ready`,
+`notifications`, `deliver-notifications`, `slack-command`, `slack-action`,
+`sync-sheets`, and `audit-events` provide the durable collaboration feed and
+non-CLI app contracts for browser UI, Slack, Sheets, email, and compliance-style
+review trails.
 `bootstrap` creates or reuses a baseline firm project and starter research
 programs from `templates/research/programs`, making it safe to run repeatedly
 when setting up local, staging, or production stores.
@@ -92,6 +130,8 @@ requires reviewer project access, and advances the run to `promoted`,
 `rejected`, or `changes_requested`.
 `add-review-comment`, `review-comments`, and `resolve-review-comment` provide
 the first comments/annotations workflow for outputs and claims.
+`output-versions` and `diff-output` let reviewers inspect source-rich artifact
+history before promotion.
 `export-run` and `export-project` publish promoted outputs into object-store
 artifacts for ADAM, Obsidian, Markdown, JSON, and dashboard consumers. Use
 `--status staged` for pre-review handoffs and `--status all` for administrative

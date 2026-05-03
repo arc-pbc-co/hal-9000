@@ -5,11 +5,17 @@ from hal9000.vector.embeddings import (
     FakeEmbeddingProvider,
     create_embedding_provider,
 )
-from hal9000.vector.store import ChunkEmbeddingPayload, ChunkSearchResult, VectorRepository
+from hal9000.vector.store import (
+    ChunkEmbeddingPayload,
+    ChunkSearchResult,
+    SemanticSearchResult,
+    VectorRepository,
+)
 
 __all__ = [
     "ChunkEmbeddingPayload",
     "ChunkSearchResult",
+    "SemanticSearchResult",
     "EmbeddingProvider",
     "FakeEmbeddingProvider",
     "VectorRepository",

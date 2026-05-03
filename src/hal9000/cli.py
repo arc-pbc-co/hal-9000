@@ -1391,6 +1391,868 @@ def research_observe(ctx: click.Context, limit: int, as_json: bool) -> None:
         session.close()
 
 
+@research.command("harden-corpus")
+@click.option("--limit", type=int, help="Maximum recent documents to harden")
+@click.option(
+    "--refresh-policy",
+    default="manual",
+    type=click.Choice(["manual", "interval", "never"]),
+    show_default=True,
+    help="Source refresh policy to attach to documents",
+)
+@click.option("--refresh-interval-days", type=int, help="Interval policy cadence in days")
+@click.option("--json", "as_json", is_flag=True, help="Emit hardened document rows as JSON")
+@click.pass_context
+def research_harden_corpus(
+    ctx: click.Context,
+    limit: Optional[int],
+    refresh_policy: str,
+    refresh_interval_days: Optional[int],
+    as_json: bool,
+) -> None:
+    """Normalize document citations, version fields, refresh policy, and source quality."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.corpus import CorpusHardeningService
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        results = CorpusHardeningService(store).harden_documents(
+            limit=limit,
+            refresh_policy=refresh_policy,
+            refresh_interval_days=refresh_interval_days,
+        )
+        session.commit()
+        payloads = [result.to_dict() for result in results]
+        if as_json:
+            console.print(json.dumps(payloads, indent=2, sort_keys=True))
+            return
+
+        table = Table(title="Corpus Hardening")
+        table.add_column("Document", style="cyan")
+        table.add_column("Citation Key", style="blue")
+        table.add_column("Source ID")
+        table.add_column("Quality", style="green")
+        table.add_column("Score", justify="right")
+        for result in results:
+            table.add_row(
+                result.document_id[:8],
+                result.citation_key,
+                result.source_identifier[:80],
+                result.source_quality_label,
+                f"{result.source_quality_score:.3f}",
+            )
+        console.print(table)
+    except Exception as exc:
+        session.rollback()
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        session.close()
+
+
+@research.command("dedupe-report")
+@click.option("--created-by", help="Actor creating the report")
+@click.option("--json", "as_json", is_flag=True, help="Emit the report as JSON")
+@click.pass_context
+def research_dedupe_report(
+    ctx: click.Context,
+    created_by: Optional[str],
+    as_json: bool,
+) -> None:
+    """Create a persisted duplicate-source report for corpus curation."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.corpus import CorpusHardeningService, report_payload
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        report = CorpusHardeningService(store).create_dedupe_report(created_by=created_by)
+        session.commit()
+        payload = report_payload(report)
+        if as_json:
+            console.print(json.dumps(payload, indent=2, sort_keys=True))
+            return
+
+        table = Table(title="Corpus Dedupe Report")
+        table.add_column("Field", style="cyan")
+        table.add_column("Value", style="green")
+        table.add_row("Report", report.id)
+        table.add_row("Duplicate Groups", str(report.duplicate_group_count))
+        table.add_row("Duplicate Documents", str(report.duplicate_document_count))
+        table.add_row("Created By", report.created_by or "-")
+        console.print(table)
+
+        groups = Table(title="Duplicate Groups")
+        groups.add_column("Match", style="cyan")
+        groups.add_column("Key", style="blue")
+        groups.add_column("Documents", style="green")
+        groups.add_column("Titles")
+        for group in payload["groups"]:
+            groups.add_row(
+                group["match_type"],
+                group["match_key"][:80],
+                str(len(group["document_ids"])),
+                "; ".join(title or "-" for title in group["titles"])[:100],
+            )
+        console.print(groups)
+    except Exception as exc:
+        session.rollback()
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        session.close()
+
+
+@research.command("create-collection")
+@click.argument("project_slug")
+@click.option("--name", required=True, help="Collection name")
+@click.option("--slug", help="Collection slug")
+@click.option("--description", help="Collection description")
+@click.option("--owner", help="Owner email")
+@click.option(
+    "--visibility",
+    default="project",
+    type=click.Choice(["private", "project", "firm"]),
+    show_default=True,
+)
+@click.pass_context
+def research_create_collection(
+    ctx: click.Context,
+    project_slug: str,
+    name: str,
+    slug: Optional[str],
+    description: Optional[str],
+    owner: Optional[str],
+    visibility: str,
+) -> None:
+    """Create a shared project collection."""
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.collaboration import CollaborationService
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        project = _get_project_or_raise(store, project_slug)
+        collection = CollaborationService(store).create_collection(
+            project,
+            name=name,
+            slug=slug,
+            description=description,
+            owner_email=owner,
+            visibility=visibility,
+        )
+        session.commit()
+        console.print("[green]Research collection created.[/green]")
+        console.print(f"  id: {collection.id}")
+        console.print(f"  slug: {collection.slug}")
+    except Exception as exc:
+        session.rollback()
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        session.close()
+
+
+@research.command("add-collection-item")
+@click.argument("project_slug")
+@click.argument("collection_slug")
+@click.option("--target-type", required=True, help="Target entity type")
+@click.option("--target-id", required=True, help="Target entity id")
+@click.option("--note", help="Optional note")
+@click.option("--added-by", help="Actor email")
+@click.pass_context
+def research_add_collection_item(
+    ctx: click.Context,
+    project_slug: str,
+    collection_slug: str,
+    target_type: str,
+    target_id: str,
+    note: Optional[str],
+    added_by: Optional[str],
+) -> None:
+    """Add an entity to a research collection."""
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.collaboration import CollaborationService
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        project = _get_project_or_raise(store, project_slug)
+        service = CollaborationService(store)
+        collection = service.get_collection(project, collection_slug)
+        if collection is None:
+            raise click.ClickException(f"Research collection not found: {collection_slug}")
+        item = service.add_collection_item(
+            collection,
+            target_type=target_type,
+            target_id=target_id,
+            note=note,
+            added_by=added_by,
+        )
+        session.commit()
+        console.print("[green]Collection item added.[/green]")
+        console.print(f"  collection: {collection.slug}")
+        console.print(f"  target: {item.target_type}:{item.target_id}")
+    except Exception as exc:
+        session.rollback()
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        session.close()
+
+
+@research.command("collections")
+@click.argument("project_slug")
+@click.option("--limit", default=50, show_default=True, type=int)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def research_collections(
+    ctx: click.Context,
+    project_slug: str,
+    limit: int,
+    as_json: bool,
+) -> None:
+    """List research collections for a project."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.collaboration import CollaborationService, collection_payload
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        project = _get_project_or_raise(store, project_slug)
+        collections = CollaborationService(store).list_collections(project, limit=limit)
+        payloads = [collection_payload(collection) for collection in collections]
+        if as_json:
+            click.echo(json.dumps(payloads, indent=2, sort_keys=True))
+            return
+        table = Table(title="Research Collections")
+        table.add_column("Slug", style="cyan")
+        table.add_column("Name", style="green")
+        table.add_column("Items", justify="right")
+        table.add_column("Owner", style="blue")
+        for payload in payloads:
+            table.add_row(
+                payload["slug"],
+                payload["name"],
+                str(payload["item_count"]),
+                payload["owner_email"] or "-",
+            )
+        console.print(table)
+    finally:
+        session.close()
+
+
+@research.command("save-search")
+@click.argument("project_slug")
+@click.option("--name", required=True, help="Saved search name")
+@click.option("--query", "query_text", required=True, help="Search query text")
+@click.option(
+    "--target",
+    default="memory",
+    type=click.Choice(["chunks", "claims", "outputs", "memory", "graph"]),
+    show_default=True,
+)
+@click.option("--filters-json", help="Optional JSON filters")
+@click.option("--owner", help="Owner email")
+@click.option(
+    "--visibility",
+    default="project",
+    type=click.Choice(["private", "project", "firm"]),
+    show_default=True,
+)
+@click.pass_context
+def research_save_search(
+    ctx: click.Context,
+    project_slug: str,
+    name: str,
+    query_text: str,
+    target: str,
+    filters_json: Optional[str],
+    owner: Optional[str],
+    visibility: str,
+) -> None:
+    """Save a reusable project search."""
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.collaboration import CollaborationService
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        project = _get_project_or_raise(store, project_slug)
+        search = CollaborationService(store).save_search(
+            project,
+            name=name,
+            query_text=query_text,
+            target=target,
+            filters=_parse_payload_json(filters_json),
+            owner_email=owner,
+            visibility=visibility,
+        )
+        session.commit()
+        console.print("[green]Saved search recorded.[/green]")
+        console.print(f"  id: {search.id}")
+        console.print(f"  name: {search.name}")
+    except Exception as exc:
+        session.rollback()
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        session.close()
+
+
+@research.command("saved-searches")
+@click.argument("project_slug")
+@click.option("--limit", default=50, show_default=True, type=int)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def research_saved_searches(
+    ctx: click.Context,
+    project_slug: str,
+    limit: int,
+    as_json: bool,
+) -> None:
+    """List saved project searches."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.collaboration import CollaborationService, saved_search_payload
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        project = _get_project_or_raise(store, project_slug)
+        searches = CollaborationService(store).list_saved_searches(project, limit=limit)
+        payloads = [saved_search_payload(search) for search in searches]
+        if as_json:
+            click.echo(json.dumps(payloads, indent=2, sort_keys=True))
+            return
+        table = Table(title="Saved Searches")
+        table.add_column("Name", style="cyan")
+        table.add_column("Target", style="green")
+        table.add_column("Query")
+        table.add_column("Owner", style="blue")
+        for payload in payloads:
+            table.add_row(
+                payload["name"],
+                payload["target"],
+                payload["query_text"][:80],
+                payload["owner_email"] or "-",
+            )
+        console.print(table)
+    finally:
+        session.close()
+
+
+@research.command("create-shared-view")
+@click.argument("project_slug")
+@click.option("--name", required=True, help="View name")
+@click.option("--slug", help="View slug")
+@click.option(
+    "--view-type",
+    default="dashboard",
+    type=click.Choice(["dashboard", "review_queue", "collection", "search", "audit"]),
+    show_default=True,
+)
+@click.option("--config-json", help="Optional JSON view config")
+@click.option("--owner", help="Owner email")
+@click.option(
+    "--visibility",
+    default="project",
+    type=click.Choice(["private", "project", "firm"]),
+    show_default=True,
+)
+@click.pass_context
+def research_create_shared_view(
+    ctx: click.Context,
+    project_slug: str,
+    name: str,
+    slug: Optional[str],
+    view_type: str,
+    config_json: Optional[str],
+    owner: Optional[str],
+    visibility: str,
+) -> None:
+    """Create or update a shared project view."""
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.collaboration import CollaborationService
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        project = _get_project_or_raise(store, project_slug)
+        view = CollaborationService(store).create_shared_view(
+            project,
+            name=name,
+            slug=slug,
+            view_type=view_type,
+            config=_parse_payload_json(config_json) or {},
+            owner_email=owner,
+            visibility=visibility,
+        )
+        session.commit()
+        console.print("[green]Shared project view saved.[/green]")
+        console.print(f"  id: {view.id}")
+        console.print(f"  slug: {view.slug}")
+    except Exception as exc:
+        session.rollback()
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        session.close()
+
+
+@research.command("shared-views")
+@click.argument("project_slug")
+@click.option("--limit", default=50, show_default=True, type=int)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def research_shared_views(
+    ctx: click.Context,
+    project_slug: str,
+    limit: int,
+    as_json: bool,
+) -> None:
+    """List shared project views."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.collaboration import CollaborationService, shared_view_payload
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        project = _get_project_or_raise(store, project_slug)
+        views = CollaborationService(store).list_shared_views(project, limit=limit)
+        payloads = [shared_view_payload(view) for view in views]
+        if as_json:
+            click.echo(json.dumps(payloads, indent=2, sort_keys=True))
+            return
+        table = Table(title="Shared Project Views")
+        table.add_column("Slug", style="cyan")
+        table.add_column("Type", style="green")
+        table.add_column("Name")
+        table.add_column("Owner", style="blue")
+        for payload in payloads:
+            table.add_row(
+                payload["slug"],
+                payload["view_type"],
+                payload["name"],
+                payload["owner_email"] or "-",
+            )
+        console.print(table)
+    finally:
+        session.close()
+
+
+@research.command("notify-review-ready")
+@click.argument("run_id")
+@click.option("--recipient", "recipients", multiple=True, required=True, help="Recipient email")
+@click.option(
+    "--channel",
+    default="in_app",
+    type=click.Choice(["in_app", "slack", "email", "sheets"]),
+    show_default=True,
+)
+@click.pass_context
+def research_notify_review_ready(
+    ctx: click.Context,
+    run_id: str,
+    recipients: tuple[str, ...],
+    channel: str,
+) -> None:
+    """Queue review-ready notifications for a staged run."""
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.collaboration import CollaborationService
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        run = store.get_run(run_id)
+        if run is None:
+            raise click.ClickException(f"Research run not found: {run_id}")
+        notifications = CollaborationService(store).create_review_ready_notifications(
+            run,
+            recipients=list(recipients),
+            channel=channel,
+        )
+        session.commit()
+        console.print("[green]Review-ready notifications queued.[/green]")
+        console.print(f"  count: {len(notifications)}")
+    except Exception as exc:
+        session.rollback()
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        session.close()
+
+
+@research.command("notifications")
+@click.option("--recipient", help="Recipient email")
+@click.option("--status", help="Notification status")
+@click.option("--project-slug", help="Filter by project")
+@click.option("--limit", default=50, show_default=True, type=int)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def research_notifications(
+    ctx: click.Context,
+    recipient: Optional[str],
+    status: Optional[str],
+    project_slug: Optional[str],
+    limit: int,
+    as_json: bool,
+) -> None:
+    """List collaboration notifications."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.collaboration import CollaborationService, notification_payload
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        project = _get_project_or_raise(store, project_slug) if project_slug else None
+        notifications = CollaborationService(store).list_notifications(
+            recipient_email=recipient,
+            status=status,
+            project=project,
+            limit=limit,
+        )
+        payloads = [notification_payload(notification) for notification in notifications]
+        if as_json:
+            click.echo(json.dumps(payloads, indent=2, sort_keys=True))
+            return
+        table = Table(title="Research Notifications")
+        table.add_column("Type", style="cyan")
+        table.add_column("Status", style="green")
+        table.add_column("Recipient", style="blue")
+        table.add_column("Title")
+        for payload in payloads:
+            table.add_row(
+                payload["notification_type"],
+                payload["status"],
+                payload["recipient_email"] or "-",
+                payload["title"][:80],
+            )
+        console.print(table)
+    finally:
+        session.close()
+
+
+@research.command("deliver-notifications")
+@click.option(
+    "--channel",
+    type=click.Choice(["in_app", "slack", "email", "sheets"]),
+    help="Deliver only one notification channel",
+)
+@click.option("--limit", default=20, show_default=True, type=int)
+@click.option("--dry-run", is_flag=True, help="Show delivery attempts without marking sent/failed")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def research_deliver_notifications(
+    ctx: click.Context,
+    channel: Optional[str],
+    limit: int,
+    dry_run: bool,
+    as_json: bool,
+) -> None:
+    """Deliver pending Slack, email, Sheets, or in-app notifications."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.notifications import (
+        NotificationDeliveryService,
+        delivery_results_payload,
+    )
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        results = NotificationDeliveryService(store).deliver_pending(
+            channel=channel,
+            limit=limit,
+            dry_run=dry_run,
+        )
+        session.commit()
+        payloads = delivery_results_payload(results)
+        if as_json:
+            click.echo(json.dumps(payloads, indent=2, sort_keys=True))
+            return
+        table = Table(title="Notification Delivery")
+        table.add_column("Channel", style="cyan")
+        table.add_column("Status", style="green")
+        table.add_column("Destination", style="blue")
+        table.add_column("Message")
+        for payload in payloads:
+            table.add_row(
+                payload["channel"],
+                payload["status"],
+                payload["destination"] or "-",
+                payload["message"][:100],
+            )
+        console.print(table)
+    except Exception as exc:
+        session.rollback()
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        session.close()
+
+
+@research.command("slack-command")
+@click.option("--user", "user_email", required=True, help="Verified Slack user email")
+@click.option("--text", required=True, help="Slash command text after /hal")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def research_slack_command(
+    ctx: click.Context,
+    user_email: str,
+    text: str,
+    as_json: bool,
+) -> None:
+    """Handle a HAL Slack slash command payload."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.slack_app import SlackAppService
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        response = SlackAppService(store).handle_command(text, user_email=user_email)
+        session.commit()
+        payload = response.to_dict()
+        if as_json:
+            click.echo(json.dumps(payload, indent=2, sort_keys=True))
+            return
+        console.print(payload["text"])
+    except Exception as exc:
+        session.rollback()
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        session.close()
+
+
+@research.command("slack-action")
+@click.option("--payload-json", required=True, help="Slack interaction payload JSON")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def research_slack_action(
+    ctx: click.Context,
+    payload_json: str,
+    as_json: bool,
+) -> None:
+    """Handle a HAL Slack interactive button payload."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.slack_app import SlackAppService
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        payload = _parse_payload_json(payload_json)
+        store = ResearchStore(session)
+        response = SlackAppService(store).handle_action(payload)
+        session.commit()
+        response_payload = response.to_dict()
+        if as_json:
+            click.echo(json.dumps(response_payload, indent=2, sort_keys=True))
+            return
+        console.print(response_payload["text"])
+    except Exception as exc:
+        session.rollback()
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        session.close()
+
+
+@research.command("sync-sheets")
+@click.argument("project_slug")
+@click.option(
+    "--target",
+    required=True,
+    type=click.Choice(["runs", "review_queue", "outputs", "audit"]),
+    help="Project view to sync",
+)
+@click.option("--spreadsheet-id", required=True, help="Google Sheets spreadsheet id")
+@click.option("--range-name", required=True, help="A1 range such as Runs!A1")
+@click.option("--actor", "actor_email", required=True, help="Verified HAL user email")
+@click.option("--reviewer", "reviewer_email", help="Reviewer email for review_queue target")
+@click.option("--limit", default=100, show_default=True, type=int)
+@click.option("--dry-run", is_flag=True, help="Build rows and audit the job without writing Sheets")
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def research_sync_sheets(
+    ctx: click.Context,
+    project_slug: str,
+    target: str,
+    spreadsheet_id: str,
+    range_name: str,
+    actor_email: str,
+    reviewer_email: Optional[str],
+    limit: int,
+    dry_run: bool,
+    as_json: bool,
+) -> None:
+    """Sync HAL project cockpit rows to Google Sheets."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.sheets import SheetsSyncService, sync_result_payload
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        project = _get_project_or_raise(store, project_slug)
+        result = SheetsSyncService(store).sync_project_view(
+            project,
+            target=target,
+            spreadsheet_id=spreadsheet_id,
+            range_name=range_name,
+            actor_email=actor_email,
+            reviewer_email=reviewer_email,
+            limit=limit,
+            dry_run=dry_run,
+        )
+        session.commit()
+        payload = sync_result_payload(result)
+        if as_json:
+            click.echo(json.dumps(payload, indent=2, sort_keys=True))
+            return
+        console.print("[green]Sheets sync complete.[/green]")
+        console.print(f"  target: {payload['target']}")
+        console.print(f"  rows: {payload['row_count']}")
+        console.print(f"  status: {payload['status']}")
+        console.print(f"  message: {payload['message']}")
+    except Exception as exc:
+        session.rollback()
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        session.close()
+
+
+@research.command("audit-events")
+@click.option("--project-slug", help="Filter by project")
+@click.option("--run-id", help="Filter by run")
+@click.option("--action", help="Filter by action")
+@click.option("--target-type", help="Filter by target type")
+@click.option("--limit", default=50, show_default=True, type=int)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def research_audit_events(
+    ctx: click.Context,
+    project_slug: Optional[str],
+    run_id: Optional[str],
+    action: Optional[str],
+    target_type: Optional[str],
+    limit: int,
+    as_json: bool,
+) -> None:
+    """List collaboration and review audit events."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.collaboration import CollaborationService, audit_event_payload
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        project = _get_project_or_raise(store, project_slug) if project_slug else None
+        run = None
+        if run_id:
+            run = store.get_run(run_id)
+            if run is None:
+                raise click.ClickException(f"Research run not found: {run_id}")
+        events = CollaborationService(store).list_audit_events(
+            project=project,
+            run=run,
+            action=action,
+            target_type=target_type,
+            limit=limit,
+        )
+        payloads = [audit_event_payload(event) for event in events]
+        if as_json:
+            click.echo(json.dumps(payloads, indent=2, sort_keys=True))
+            return
+        table = Table(title="Research Audit Events")
+        table.add_column("Action", style="cyan")
+        table.add_column("Actor", style="blue")
+        table.add_column("Target", style="green")
+        table.add_column("Created")
+        for payload in payloads:
+            table.add_row(
+                payload["action"],
+                payload["actor_email"] or "-",
+                f"{payload['target_type']}:{payload['target_id'][:24]}",
+                payload["created_at"] or "-",
+            )
+        console.print(table)
+    finally:
+        session.close()
+
+
 def _render_observability_summary(summary) -> None:
     """Render a compact operations dashboard."""
     status_table = Table(title="Research Operations")
@@ -1989,6 +2851,28 @@ def research_resolve_review_comment(
         session.close()
 
 
+@research.command("review-ui")
+@click.option("--host", default="127.0.0.1", show_default=True, help="HTTP bind host")
+@click.option("--port", default=9100, show_default=True, type=int, help="HTTP bind port")
+@click.pass_context
+def research_review_ui(
+    ctx: click.Context,
+    host: str,
+    port: int,
+) -> None:
+    """Run the lightweight browser review UI."""
+    from hal9000.research.review_http import run_review_http_server
+
+    settings = _get_settings_from_context(ctx)
+    console.print(f"[cyan]Starting review UI on[/cyan] [bold]http://{host}:{port}[/bold]")
+    console.print("[dim]Press Ctrl+C to stop the review UI[/dim]")
+    try:
+        run_review_http_server(settings, host, port)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Shutdown requested...[/yellow]")
+    console.print("[green]Review UI stopped.[/green]")
+
+
 @research.command("review-run")
 @click.argument("run_id")
 @click.option(
@@ -2036,6 +2920,106 @@ def research_review_run(
         console.print(f"  event: {result.event.event_type} #{result.event.sequence}")
     except Exception as exc:
         session.rollback()
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        session.close()
+
+
+@research.command("output-versions")
+@click.argument("output_id")
+@click.option("--json", "as_json", is_flag=True, help="Emit output versions as JSON")
+@click.pass_context
+def research_output_versions(
+    ctx: click.Context,
+    output_id: str,
+    as_json: bool,
+) -> None:
+    """List version history for a research output."""
+    import json
+
+    from hal9000.db.models import ResearchOutput, init_db
+    from hal9000.db.store import ResearchStore
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        output = session.get(ResearchOutput, output_id)
+        if output is None:
+            raise click.ClickException(f"Research output not found: {output_id}")
+        versions = ResearchStore(session).list_output_versions(output)
+        payloads = [
+            {
+                "id": version.id,
+                "output_id": version.output_id,
+                "version_number": version.version_number,
+                "title": version.title,
+                "status": version.status,
+                "format": version.format,
+                "change_summary": version.change_summary,
+                "created_by": version.created_by,
+                "created_at": version.created_at.isoformat() if version.created_at else None,
+            }
+            for version in versions
+        ]
+        if as_json:
+            click.echo(json.dumps(payloads, indent=2, sort_keys=True))
+            return
+
+        table = Table(title="Output Versions")
+        table.add_column("Version", justify="right", style="cyan")
+        table.add_column("Status", style="green")
+        table.add_column("Format", style="magenta")
+        table.add_column("Created By", style="blue")
+        table.add_column("Summary")
+        for payload in payloads:
+            table.add_row(
+                str(payload["version_number"]),
+                payload["status"],
+                payload["format"],
+                payload["created_by"] or "-",
+                payload["change_summary"] or "-",
+            )
+        console.print(table)
+    finally:
+        session.close()
+
+
+@research.command("diff-output")
+@click.argument("output_id")
+@click.option("--from-version", "from_version", required=True, type=int, help="Left version")
+@click.option("--to-version", "to_version", required=True, type=int, help="Right version")
+@click.pass_context
+def research_diff_output(
+    ctx: click.Context,
+    output_id: str,
+    from_version: int,
+    to_version: int,
+) -> None:
+    """Show a unified diff between two output versions."""
+    from hal9000.db.models import ResearchOutput, init_db
+    from hal9000.db.store import ResearchStore
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        output = session.get(ResearchOutput, output_id)
+        if output is None:
+            raise click.ClickException(f"Research output not found: {output_id}")
+        result = ResearchStore(session).diff_output_versions(
+            output,
+            from_version=from_version,
+            to_version=to_version,
+        )
+        console.print(
+            f"[bold]Output diff[/bold] {output.id} "
+            f"v{result.from_version.version_number} -> v{result.to_version.version_number}"
+        )
+        console.print(result.diff or "No content changes.")
+    except Exception as exc:
         raise click.ClickException(str(exc)) from exc
     finally:
         session.close()
@@ -2323,6 +3307,288 @@ def research_search_chunks(
             console.print("[yellow]No embedded chunks matched the query.[/yellow]")
     finally:
         session.close()
+
+
+@research.command("search-memory")
+@click.argument("query_text")
+@click.option(
+    "--target",
+    "targets",
+    multiple=True,
+    type=click.Choice(["claims", "outputs"]),
+    help="Memory target to search; repeat for both. Defaults to claims and outputs.",
+)
+@click.option("--project-slug", help="Limit search to a project")
+@click.option("--run-id", help="Limit search to a run")
+@click.option("--limit", default=None, type=int, help="Maximum memory results to return")
+@click.option("--json", "as_json", is_flag=True, help="Emit results as JSON")
+@click.pass_context
+def research_search_memory(
+    ctx: click.Context,
+    query_text: str,
+    targets: tuple[str, ...],
+    project_slug: Optional[str],
+    run_id: Optional[str],
+    limit: Optional[int],
+    as_json: bool,
+) -> None:
+    """Search extracted claims and outputs semantically."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.vector import VectorRepository, create_embedding_provider
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        project_id = None
+        if project_slug:
+            project = store.get_project_by_slug(project_slug)
+            if project is None:
+                raise click.ClickException(f"Research project not found: {project_slug}")
+            project_id = project.id
+
+        provider = create_embedding_provider(
+            settings.vector.embedding_provider,
+            dimension=settings.vector.embedding_dimension,
+            model=settings.vector.embedding_model,
+        )
+        repository = VectorRepository(session)
+        results = repository.search_memory(
+            query_text=query_text,
+            provider=provider,
+            targets=set(targets) if targets else None,
+            limit=limit or settings.vector.retrieval_limit,
+            project_id=project_id,
+            run_id=run_id,
+        )
+        payloads = [result.as_context_item() for result in results]
+        if as_json:
+            click.echo(json.dumps(payloads, indent=2, sort_keys=True))
+            return
+
+        table = Table(title="Semantic Memory Search")
+        table.add_column("Score", style="green", justify="right")
+        table.add_column("Type", style="cyan")
+        table.add_column("ID", style="blue")
+        table.add_column("Title")
+        table.add_column("Content")
+
+        for result in results:
+            table.add_row(
+                f"{result.score:.3f}",
+                result.target_type,
+                result.target_id[:8],
+                result.title or "-",
+                result.content[:120].replace("\n", " "),
+            )
+        console.print(table)
+        if not results:
+            console.print("[yellow]No claims or outputs matched the query.[/yellow]")
+    finally:
+        session.close()
+
+
+@research.command("add-graph-edge")
+@click.option("--source-type", required=True, help="Source entity type")
+@click.option("--source-id", required=True, help="Source entity id")
+@click.option(
+    "--relationship",
+    "relationship_type",
+    required=True,
+    type=click.Choice(
+        [
+            "cites",
+            "supports",
+            "contradicts",
+            "uses_method",
+            "studies_material",
+            "reports_property",
+        ]
+    ),
+    help="Graph relationship type",
+)
+@click.option("--target-type", required=True, help="Target entity type")
+@click.option("--target-id", required=True, help="Target entity id")
+@click.option("--project-slug", help="Attach edge to a project")
+@click.option("--run-id", help="Attach edge to a run")
+@click.option("--confidence", default=1.0, show_default=True, type=float, help="Edge confidence")
+@click.option("--evidence-json", help="Optional JSON evidence payload")
+@click.option("--created-by", help="Actor creating the edge")
+@click.pass_context
+def research_add_graph_edge(
+    ctx: click.Context,
+    source_type: str,
+    source_id: str,
+    relationship_type: str,
+    target_type: str,
+    target_id: str,
+    project_slug: Optional[str],
+    run_id: Optional[str],
+    confidence: float,
+    evidence_json: Optional[str],
+    created_by: Optional[str],
+) -> None:
+    """Add a typed graph relationship between research entities."""
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.graph import ResearchGraphService, edge_payload
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        project = None
+        if project_slug:
+            project = store.get_project_by_slug(project_slug)
+            if project is None:
+                raise click.ClickException(f"Research project not found: {project_slug}")
+        run = None
+        if run_id:
+            run = store.get_run(run_id)
+            if run is None:
+                raise click.ClickException(f"Research run not found: {run_id}")
+
+        edge = ResearchGraphService(store).add_edge(
+            source_type=source_type,
+            source_id=source_id,
+            relationship_type=relationship_type,
+            target_type=target_type,
+            target_id=target_id,
+            project=project,
+            run=run,
+            confidence=confidence,
+            evidence=_parse_payload_json(evidence_json),
+            created_by=created_by,
+        )
+        session.commit()
+        payload = edge_payload(edge)
+        console.print("[green]Research graph edge added.[/green]")
+        console.print(f"  id: {payload.id}")
+        console.print(
+            f"  edge: {payload.source_type}:{payload.source_id} "
+            f"{payload.relationship_type} {payload.target_type}:{payload.target_id}"
+        )
+        console.print(f"  confidence: {payload.confidence:.3f}")
+    except Exception as exc:
+        session.rollback()
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        session.close()
+
+
+@research.command("graph-edges")
+@click.option("--source-type", help="Filter by source entity type")
+@click.option("--source-id", help="Filter by source entity id")
+@click.option(
+    "--relationship",
+    "relationship_type",
+    type=click.Choice(
+        [
+            "cites",
+            "supports",
+            "contradicts",
+            "uses_method",
+            "studies_material",
+            "reports_property",
+        ]
+    ),
+    help="Filter by graph relationship type",
+)
+@click.option("--target-type", help="Filter by target entity type")
+@click.option("--target-id", help="Filter by target entity id")
+@click.option("--project-slug", help="Filter by project")
+@click.option("--run-id", help="Filter by run")
+@click.option("--status", default="active", show_default=True, help="Filter by edge status")
+@click.option("--limit", default=50, show_default=True, type=int, help="Maximum edges to show")
+@click.option("--json", "as_json", is_flag=True, help="Emit graph edges as JSON")
+@click.pass_context
+def research_graph_edges(
+    ctx: click.Context,
+    source_type: Optional[str],
+    source_id: Optional[str],
+    relationship_type: Optional[str],
+    target_type: Optional[str],
+    target_id: Optional[str],
+    project_slug: Optional[str],
+    run_id: Optional[str],
+    status: Optional[str],
+    limit: int,
+    as_json: bool,
+) -> None:
+    """List typed research graph relationships."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.graph import ResearchGraphService, edge_payload
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        project = None
+        if project_slug:
+            project = store.get_project_by_slug(project_slug)
+            if project is None:
+                raise click.ClickException(f"Research project not found: {project_slug}")
+        run = None
+        if run_id:
+            run = store.get_run(run_id)
+            if run is None:
+                raise click.ClickException(f"Research run not found: {run_id}")
+
+        edges = ResearchGraphService(store).list_edges(
+            source_type=source_type,
+            source_id=source_id,
+            relationship_type=relationship_type,
+            target_type=target_type,
+            target_id=target_id,
+            project=project,
+            run=run,
+            status=status,
+            limit=limit,
+        )
+        payloads = [edge_payload(edge).to_dict() for edge in edges]
+        if as_json:
+            click.echo(json.dumps(payloads, indent=2, sort_keys=True))
+            return
+
+        table = Table(title="Research Graph Edges")
+        table.add_column("Relation", style="green")
+        table.add_column("Source", style="cyan")
+        table.add_column("Target", style="blue")
+        table.add_column("Confidence", justify="right")
+        table.add_column("Status")
+        for payload in payloads:
+            table.add_row(
+                payload["relationship_type"],
+                f"{payload['source_type']}:{payload['source_id'][:24]}",
+                f"{payload['target_type']}:{payload['target_id'][:24]}",
+                f"{payload['confidence']:.3f}",
+                payload["status"],
+            )
+        console.print(table)
+        if not payloads:
+            console.print("[yellow]No graph edges matched the filters.[/yellow]")
+    finally:
+        session.close()
+
+
+def _get_project_or_raise(store, project_slug: str):
+    """Fetch a project by slug or raise a ClickException."""
+    project = store.get_project_by_slug(project_slug)
+    if project is None:
+        raise click.ClickException(f"Research project not found: {project_slug}")
+    return project
 
 
 def _parse_payload_json(raw_payload: Optional[str]) -> Optional[dict]:

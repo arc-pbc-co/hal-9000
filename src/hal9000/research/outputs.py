@@ -24,6 +24,18 @@ class StagedOutputs:
         return [output.id for output in self.outputs]
 
 
+@dataclass(frozen=True)
+class SourceCitation:
+    """A stable citation marker used in rendered outputs."""
+
+    marker: str
+    document_id: str | None
+    title: str
+    citation: str
+    source_url: str | None = None
+    locator: str | None = None
+
+
 class ResearchOutputGenerator:
     """Generate first-pass staged outputs from a research run contract."""
 
@@ -215,6 +227,8 @@ class ResearchOutputGenerator:
     ) -> str:
         """Render a source-backed literature brief from run claims."""
         claims = list(run.claims)
+        citations = self._citation_map(claims)
+        figures_tables = self._figure_table_items(claims)
         lines = [
             f"# Research Brief: {run.objective}",
             "",
@@ -229,12 +243,19 @@ class ResearchOutputGenerator:
             lines.append("No source-backed claims have been attached to this run yet.")
         else:
             for index, claim in enumerate(claims, start=1):
-                evidence = claim.evidence_links[0] if claim.evidence_links else None
-                locator = evidence.locator if evidence and evidence.locator else "no locator"
-                title = claim.document.title if claim.document and claim.document.title else "source document"
+                citation = citations.get(claim.id)
+                marker = citation.marker if citation else "[S?]"
+                locator = citation.locator if citation and citation.locator else "no locator"
                 lines.append(
-                    f"{index}. {claim.claim_text} "
-                    f"(source: {title}; locator: {locator}; confidence: {claim.confidence:.2f})"
+                    f"{index}. {claim.claim_text} {marker} "
+                    f"(locator: {locator}; confidence: {claim.confidence:.2f})"
+                )
+        if figures_tables:
+            lines.extend(["", "## Figures and Tables", ""])
+            for item in figures_tables:
+                lines.append(
+                    f"- {item['kind'].title()}: {item['label']} "
+                    f"{item['citation_marker']} - {item['description']}"
                 )
         if retrieval_context:
             lines.extend(
@@ -249,6 +270,7 @@ class ResearchOutputGenerator:
                 score = item.get("score", 0)
                 content = str(item.get("content") or "").replace("\n", " ").strip()
                 lines.append(f"{index}. {content} (source: {source}; score: {score})")
+        lines.extend(self._source_notes_section(citations.values()))
         lines.extend(
             [
                 "",
@@ -265,30 +287,35 @@ class ResearchOutputGenerator:
 
     def _render_evidence_table(self, run: ResearchRun) -> str:
         """Render an evidence table from run claims."""
+        citations = self._citation_map(run.claims)
         lines = [
             f"# Evidence Table: {run.objective}",
             "",
-            "| Claim | Type | Confidence | Source | Locator | Evidence |",
-            "|-------|------|------------|--------|---------|----------|",
+            "| Claim | Type | Confidence | Citation | Source | Locator | Evidence |",
+            "|-------|------|------------|----------|--------|---------|----------|",
         ]
         if not run.claims:
-            lines.append("| No claims attached yet | - | - | - | - | - |")
+            lines.append("| No claims attached yet | - | - | - | - | - | - |")
             return "\n".join(lines)
 
         for claim in run.claims:
             evidence = claim.evidence_links[0] if claim.evidence_links else None
             source = claim.document.title if claim.document and claim.document.title else "source document"
             quote = evidence.quote if evidence and evidence.quote else claim.evidence_text or ""
-            locator = evidence.locator if evidence and evidence.locator else ""
+            citation = citations.get(claim.id)
+            marker = citation.marker if citation else "[S?]"
+            locator = citation.locator if citation and citation.locator else ""
             lines.append(
                 "| "
                 f"{self._md_cell(claim.claim_text)} | "
                 f"{self._md_cell(claim.claim_type)} | "
                 f"{claim.confidence:.2f} | "
+                f"{self._md_cell(marker)} | "
                 f"{self._md_cell(source)} | "
                 f"{self._md_cell(locator)} | "
                 f"{self._md_cell(quote)} |"
             )
+        lines.extend(self._source_notes_section(citations.values()))
         return "\n".join(lines)
 
     def _render_open_questions(
@@ -347,6 +374,11 @@ class ResearchOutputGenerator:
             "retrieval_context": retrieval_context,
             "experiment_suggestions": self._experiment_suggestion_items(run, citation_policy),
             "source_claims": [self._claim_payload(claim) for claim in run.claims],
+            "figures_tables": self._figure_table_items(run.claims),
+            "citations": [
+                citation.__dict__
+                for citation in self._citation_map(run.claims).values()
+            ],
             "metadata": {
                 "run_id": run.id,
                 "program_id": run.program.id if run.program else None,
@@ -466,6 +498,7 @@ class ResearchOutputGenerator:
     def _claim_payload(self, claim) -> dict[str, Any]:
         """Render a claim and first evidence link as JSON-safe data."""
         evidence = claim.evidence_links[0] if claim.evidence_links else None
+        citation = self._citation_for_claim(claim, marker="[S1]")
         return {
             "claim_id": claim.id,
             "document_id": claim.document_id,
@@ -477,6 +510,7 @@ class ResearchOutputGenerator:
             "locator": evidence.locator if evidence else None,
             "quote": evidence.quote if evidence else claim.evidence_text,
             "source_url": evidence.source_url if evidence else None,
+            "citation": citation.__dict__ if citation else None,
         }
 
     def _md_cell(self, value: str | None) -> str:
@@ -492,3 +526,123 @@ class ResearchOutputGenerator:
             "Retrieved context is available but has not yet been converted into "
             f"reviewable claims. Top chunk: {top.get('content')}"
         )
+
+    def _citation_map(self, claims) -> dict[str, SourceCitation]:
+        """Return one citation marker per claim while deduplicating source notes."""
+        source_markers: dict[tuple[str | None, str | None, str | None], str] = {}
+        citations: dict[str, SourceCitation] = {}
+        for claim in claims:
+            evidence = claim.evidence_links[0] if claim.evidence_links else None
+            key = (
+                claim.document_id,
+                evidence.source_url if evidence else None,
+                evidence.locator if evidence else None,
+            )
+            if key not in source_markers:
+                source_markers[key] = f"[S{len(source_markers) + 1}]"
+            citation = self._citation_for_claim(claim, source_markers[key])
+            if citation is not None:
+                citations[claim.id] = citation
+        return citations
+
+    def _citation_for_claim(self, claim, marker: str) -> SourceCitation | None:
+        """Build a source citation for a claim."""
+        evidence = claim.evidence_links[0] if claim.evidence_links else None
+        document = claim.document
+        if document is None and evidence is None:
+            return None
+        title = document.title if document and document.title else "source document"
+        citation = (
+            document.normalized_citation
+            if document and document.normalized_citation
+            else self._fallback_citation(document, title)
+        )
+        return SourceCitation(
+            marker=marker,
+            document_id=claim.document_id,
+            title=title,
+            citation=citation,
+            source_url=evidence.source_url if evidence else None,
+            locator=evidence.locator if evidence else None,
+        )
+
+    def _fallback_citation(self, document, title: str) -> str:
+        """Render a citation when corpus hardening has not populated normalized fields."""
+        if document is None:
+            return title
+        year = document.year or "n.d."
+        doi = f" DOI: {document.doi}." if document.doi else ""
+        return f"{title} ({year}).{doi}".strip()
+
+    def _source_notes_section(self, citations) -> list[str]:
+        """Render source notes from citation records."""
+        citations = list(citations)
+        if not citations:
+            return []
+        lines = ["", "## Sources", ""]
+        seen = set()
+        for citation in citations:
+            key = (citation.marker, citation.citation, citation.locator)
+            if key in seen:
+                continue
+            seen.add(key)
+            locator = f" Locator: {citation.locator}." if citation.locator else ""
+            url = f" URL: {citation.source_url}." if citation.source_url else ""
+            lines.append(f"- {citation.marker} {citation.citation}.{locator}{url}")
+        return lines
+
+    def _figure_table_items(self, claims) -> list[dict[str, Any]]:
+        """Extract figure/table references from claim provenance and chunk metadata."""
+        items: list[dict[str, Any]] = []
+        citations = self._citation_map(claims)
+        for claim in claims:
+            citation = citations.get(claim.id)
+            marker = citation.marker if citation else "[S?]"
+            for payload in (
+                self._json_payload(claim.provenance_json),
+                self._json_payload(claim.chunk.extraction_metadata if claim.chunk else None),
+            ):
+                for kind in ("figures", "tables"):
+                    for raw in payload.get(kind, []) if isinstance(payload.get(kind), list) else []:
+                        item = self._figure_table_payload(raw, kind[:-1], marker, claim.id)
+                        if item:
+                            items.append(item)
+        return items
+
+    def _figure_table_payload(
+        self,
+        raw: Any,
+        kind: str,
+        citation_marker: str,
+        claim_id: str,
+    ) -> dict[str, Any] | None:
+        """Normalize a figure/table reference."""
+        if isinstance(raw, str):
+            return {
+                "kind": kind,
+                "label": raw,
+                "description": raw,
+                "citation_marker": citation_marker,
+                "claim_id": claim_id,
+            }
+        if isinstance(raw, dict):
+            label = str(raw.get("label") or raw.get("id") or raw.get("title") or kind)
+            description = str(raw.get("description") or raw.get("caption") or label)
+            return {
+                "kind": kind,
+                "label": label,
+                "description": description,
+                "citation_marker": citation_marker,
+                "claim_id": claim_id,
+            }
+        return None
+
+    def _json_payload(self, raw: str | None) -> dict[str, Any]:
+        """Parse optional JSON object payloads."""
+        if not raw:
+            return {}
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+        return payload if isinstance(payload, dict) else {}

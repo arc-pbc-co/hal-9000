@@ -7,7 +7,14 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from hal9000.db.models import ChunkEmbedding, DocumentChunk, ResearchRun, utc_now
+from hal9000.db.models import (
+    ChunkEmbedding,
+    DocumentChunk,
+    ExtractedClaim,
+    ResearchOutput,
+    ResearchRun,
+    utc_now,
+)
 from hal9000.vector.embeddings import EmbeddingProvider
 
 
@@ -51,6 +58,40 @@ class ChunkSearchResult:
             "embedding_provider": self.embedding_provider,
             "embedding_model": self.embedding_model,
             "vector_uri": self.vector_uri,
+        }
+
+
+@dataclass(frozen=True)
+class SemanticSearchResult:
+    """Semantic search result for a claim or output."""
+
+    target_type: str
+    target_id: str
+    score: float
+    content: str
+    title: Optional[str] = None
+    document_id: Optional[str] = None
+    run_id: Optional[str] = None
+    project_id: Optional[str] = None
+    embedding_provider: Optional[str] = None
+    embedding_model: Optional[str] = None
+
+    def as_context_item(self, max_chars: int = 600) -> dict[str, object]:
+        """Return a JSON-safe retrieval context item."""
+        content = self.content.strip()
+        if len(content) > max_chars:
+            content = content[: max_chars - 3].rstrip() + "..."
+        return {
+            "target_type": self.target_type,
+            "target_id": self.target_id,
+            "score": round(self.score, 6),
+            "title": self.title,
+            "document_id": self.document_id,
+            "run_id": self.run_id,
+            "project_id": self.project_id,
+            "content": content,
+            "embedding_provider": self.embedding_provider,
+            "embedding_model": self.embedding_model,
         }
 
 
@@ -232,6 +273,125 @@ class VectorRepository:
         results.sort(key=lambda result: result.score, reverse=True)
         return results[:limit]
 
+    def search_claims(
+        self,
+        query_text: str,
+        provider: EmbeddingProvider,
+        limit: int = 5,
+        project_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        min_score: Optional[float] = None,
+    ) -> list[SemanticSearchResult]:
+        """Search extracted claims semantically with provider embeddings."""
+        query_embedding = provider.embed_text(query_text)
+        query = self.session.query(ExtractedClaim)
+        if run_id:
+            query = query.filter(ExtractedClaim.run_id == run_id)
+
+        results = []
+        for claim in query.all():
+            if project_id and (claim.run is None or claim.run.project_id != project_id):
+                continue
+            content = _claim_search_text(claim)
+            score = _score_text(query_embedding, content, provider)
+            if min_score is not None and score < min_score:
+                continue
+            results.append(
+                SemanticSearchResult(
+                    target_type="claim",
+                    target_id=claim.id,
+                    score=score,
+                    content=claim.claim_text,
+                    title=claim.claim_type,
+                    document_id=claim.document_id,
+                    run_id=claim.run_id,
+                    project_id=claim.run.project_id if claim.run else None,
+                    embedding_provider=provider.name,
+                    embedding_model=provider.model,
+                )
+            )
+
+        results.sort(key=lambda result: result.score, reverse=True)
+        return results[:limit]
+
+    def search_outputs(
+        self,
+        query_text: str,
+        provider: EmbeddingProvider,
+        limit: int = 5,
+        project_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        min_score: Optional[float] = None,
+    ) -> list[SemanticSearchResult]:
+        """Search research outputs semantically with provider embeddings."""
+        query = self.session.query(ResearchOutput)
+        if run_id:
+            query = query.filter(ResearchOutput.run_id == run_id)
+        if project_id:
+            query = query.filter(ResearchOutput.project_id == project_id)
+
+        query_embedding = provider.embed_text(query_text)
+        results = []
+        for output in query.all():
+            content = _output_search_text(output)
+            score = _score_text(query_embedding, content, provider)
+            if min_score is not None and score < min_score:
+                continue
+            results.append(
+                SemanticSearchResult(
+                    target_type="output",
+                    target_id=output.id,
+                    score=score,
+                    content=output.content or output.title,
+                    title=output.title,
+                    run_id=output.run_id,
+                    project_id=output.project_id,
+                    embedding_provider=provider.name,
+                    embedding_model=provider.model,
+                )
+            )
+
+        results.sort(key=lambda result: result.score, reverse=True)
+        return results[:limit]
+
+    def search_memory(
+        self,
+        query_text: str,
+        provider: EmbeddingProvider,
+        targets: set[str] | None = None,
+        limit: int = 5,
+        project_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        min_score: Optional[float] = None,
+    ) -> list[SemanticSearchResult]:
+        """Search claims and outputs through one semantic memory API."""
+        normalized_targets = targets or {"claims", "outputs"}
+        results: list[SemanticSearchResult] = []
+        if "claims" in normalized_targets:
+            results.extend(
+                self.search_claims(
+                    query_text,
+                    provider,
+                    limit=limit,
+                    project_id=project_id,
+                    run_id=run_id,
+                    min_score=min_score,
+                )
+            )
+        if "outputs" in normalized_targets:
+            results.extend(
+                self.search_outputs(
+                    query_text,
+                    provider,
+                    limit=limit,
+                    project_id=project_id,
+                    run_id=run_id,
+                    min_score=min_score,
+                )
+            )
+        results.sort(key=lambda result: result.score, reverse=True)
+        return results[:limit]
+
 
 def _cosine_similarity(left: list[float], right: list[float]) -> float:
     """Compute cosine similarity for two equal-length vectors."""
@@ -243,3 +403,36 @@ def _cosine_similarity(left: list[float], right: list[float]) -> float:
         return 0.0
     dot = sum(left_value * right_value for left_value, right_value in zip(left, right))
     return dot / (left_norm * right_norm)
+
+
+def _score_text(
+    query_embedding: list[float],
+    content: str,
+    provider: EmbeddingProvider,
+) -> float:
+    embedding = provider.embed_text(content)
+    if len(embedding) != len(query_embedding):
+        return 0.0
+    return _cosine_similarity(query_embedding, embedding)
+
+
+def _claim_search_text(claim: ExtractedClaim) -> str:
+    parts = [
+        claim.claim_text,
+        claim.claim_type,
+        claim.evidence_text or "",
+        claim.normalized_subject or "",
+        claim.normalized_predicate or "",
+        claim.normalized_object or "",
+    ]
+    return "\n".join(part for part in parts if part)
+
+
+def _output_search_text(output: ResearchOutput) -> str:
+    parts = [
+        output.title,
+        output.output_type,
+        output.format,
+        output.content or "",
+    ]
+    return "\n".join(part for part in parts if part)

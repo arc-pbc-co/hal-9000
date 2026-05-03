@@ -8,18 +8,27 @@ from sqlalchemy.engine import make_url
 
 from hal9000.db.models import (
     ChunkEmbedding,
+    CorpusDedupeReport,
     Document,
     DocumentChunk,
     EvidenceLink,
     ExtractedClaim,
     ProjectPermission,
+    ResearchAuditEvent,
+    ResearchCollection,
+    ResearchCollectionItem,
+    ResearchGraphEdge,
+    ResearchNotification,
     ResearchOutput,
+    ResearchOutputVersion,
     ResearchProgramRecord,
     ResearchProject,
     ResearchRun,
     ResearchToolCall,
     ReviewAnnotation,
     ReviewDecision,
+    SavedSearch,
+    SharedProjectView,
     Team,
     TeamMembership,
     UserAccount,
@@ -76,6 +85,15 @@ class TestSharedResearchStoreModels:
         assert "team_memberships" in table_names
         assert "project_permissions" in table_names
         assert "review_annotations" in table_names
+        assert "corpus_dedupe_reports" in table_names
+        assert "research_graph_edges" in table_names
+        assert "research_output_versions" in table_names
+        assert "research_collections" in table_names
+        assert "research_collection_items" in table_names
+        assert "saved_searches" in table_names
+        assert "shared_project_views" in table_names
+        assert "research_notifications" in table_names
+        assert "research_audit_events" in table_names
 
     def test_identity_and_project_permission_relationships(self, temp_directory: Path):
         """Users and teams should connect to project permission grants."""
@@ -153,6 +171,171 @@ class TestSharedResearchStoreModels:
             assert saved.run.objective == "Review output."
             assert saved.author.email == "reviewer@example.com"
             assert saved.status == "open"
+        finally:
+            session.close()
+
+    def test_document_corpus_hardening_fields_and_dedupe_report(self, temp_directory: Path):
+        """Documents should carry version/source metadata and persisted dedupe reports."""
+        _, session_factory = init_db(f"sqlite:///{temp_directory / 'corpus_hardening.db'}")
+        session = session_factory()
+
+        try:
+            document = Document(
+                source_path="/papers/source.pdf",
+                source_type="local",
+                file_hash="c" * 64,
+                title="Source Paper",
+                doi="10.1000/source",
+                source_identifier="doi:10.1000/source",
+                source_version="v2",
+                version_group_key="doi:10.1000/source",
+                refresh_policy="interval",
+                refresh_interval_days=30,
+                normalized_doi="10.1000/source",
+                citation_key="smith-2025-source-paper",
+                normalized_citation="Smith (2025). Source Paper. DOI: 10.1000/source.",
+                source_quality_score=0.9,
+                source_quality_label="high",
+                source_quality_json='{"has_doi": true}',
+            )
+            report = CorpusDedupeReport(
+                duplicate_group_count=1,
+                duplicate_document_count=2,
+                report_json='{"groups": []}',
+                created_by="curator@example.com",
+            )
+            session.add_all([document, report])
+            session.commit()
+
+            saved = session.query(Document).filter_by(file_hash="c" * 64).one()
+            saved_report = session.query(CorpusDedupeReport).one()
+
+            assert saved.version_group_key == "doi:10.1000/source"
+            assert saved.refresh_policy == "interval"
+            assert saved.normalized_doi == "10.1000/source"
+            assert saved.source_quality_label == "high"
+            assert saved_report.duplicate_group_count == 1
+            assert saved_report.created_by == "curator@example.com"
+        finally:
+            session.close()
+
+    def test_research_graph_edge_model(self, temp_directory: Path):
+        """Research graph edges should persist typed source-target relationships."""
+        _, session_factory = init_db(f"sqlite:///{temp_directory / 'graph_edges.db'}")
+        session = session_factory()
+
+        try:
+            project = ResearchProject(name="Graph", slug="graph")
+            run = ResearchRun(project=project, objective="Build graph.")
+            edge = ResearchGraphEdge(
+                project=project,
+                run=run,
+                source_type="claim",
+                source_id="claim-1",
+                relationship_type="supports",
+                target_type="claim",
+                target_id="claim-2",
+                confidence=0.8,
+                evidence_json='{"reason": "same result"}',
+                created_by="curator@example.com",
+            )
+            session.add(edge)
+            session.commit()
+
+            saved = session.query(ResearchGraphEdge).one()
+
+            assert saved.project.slug == "graph"
+            assert saved.run.objective == "Build graph."
+            assert saved.relationship_type == "supports"
+            assert saved.status == "active"
+        finally:
+            session.close()
+
+    def test_research_output_version_model(self, temp_directory: Path):
+        """Research output versions should snapshot output content over time."""
+        _, session_factory = init_db(f"sqlite:///{temp_directory / 'output_versions.db'}")
+        session = session_factory()
+
+        try:
+            output = ResearchOutput(
+                output_type="research_brief",
+                title="Brief",
+                content="# Brief",
+            )
+            version = ResearchOutputVersion(
+                output=output,
+                version_number=1,
+                title="Brief",
+                status="staged",
+                format="markdown",
+                content="# Brief",
+                change_summary="Initial.",
+            )
+            session.add(version)
+            session.commit()
+
+            saved = session.query(ResearchOutput).one()
+
+            assert saved.versions[0].version_number == 1
+            assert saved.versions[0].change_summary == "Initial."
+        finally:
+            session.close()
+
+    def test_collaboration_models(self, temp_directory: Path):
+        """Collaboration tables should connect to projects, runs, and targets."""
+        _, session_factory = init_db(f"sqlite:///{temp_directory / 'collaboration.db'}")
+        session = session_factory()
+
+        try:
+            project = ResearchProject(name="Collab", slug="collab")
+            run = ResearchRun(project=project, objective="Collaborate.")
+            collection = ResearchCollection(
+                project=project,
+                name="Review Set",
+                slug="review-set",
+                owner_email="owner@example.com",
+            )
+            item = ResearchCollectionItem(
+                collection=collection,
+                target_type="run",
+                target_id="run-1",
+            )
+            search = SavedSearch(
+                project=project,
+                name="Creep",
+                query_text="creep resistance",
+            )
+            view = SharedProjectView(
+                project=project,
+                name="Review Dashboard",
+                slug="review-dashboard",
+                config_json='{"sections": ["queue"]}',
+            )
+            notification = ResearchNotification(
+                project=project,
+                run=run,
+                recipient_email="reviewer@example.com",
+                notification_type="review_ready",
+                title="Ready",
+            )
+            audit = ResearchAuditEvent(
+                project=project,
+                run=run,
+                actor_email="reviewer@example.com",
+                action="run.promoted",
+                target_type="run",
+                target_id="run-1",
+            )
+            session.add_all([item, search, view, notification, audit])
+            session.commit()
+
+            saved = session.query(ResearchCollection).one()
+
+            assert saved.items[0].target_type == "run"
+            assert session.query(SavedSearch).one().query_text == "creep resistance"
+            assert session.query(SharedProjectView).one().slug == "review-dashboard"
+            assert session.query(ResearchNotification).one().run.objective == "Collaborate."
+            assert session.query(ResearchAuditEvent).one().action == "run.promoted"
         finally:
             session.close()
 

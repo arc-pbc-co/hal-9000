@@ -52,6 +52,10 @@ nav:
     - Deployment: guides/deployment.md
     - Backup and Restore: guides/backup-restore.md
     - Research Exports: guides/research-exports.md
+    - Output Quality: guides/output-quality.md
+    - Collaboration Views: guides/collaboration-views.md
+    - Corpus Hardening: guides/corpus-hardening.md
+    - Graph Relationships: guides/graph-relationships.md
     - Access Control: guides/access-control.md
     - SSO and OIDC: guides/sso-oidc.md
     - Review Workflow: guides/review-workflow.md

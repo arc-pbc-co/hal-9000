@@ -1,5 +1,6 @@
 """Repository helpers for HAL's shared research store."""
 
+import difflib
 import hashlib
 import json
 from dataclasses import dataclass
@@ -13,7 +14,9 @@ from hal9000.db.models import (
     EvidenceLink,
     ExtractedClaim,
     ProjectPermission,
+    ResearchAuditEvent,
     ResearchOutput,
+    ResearchOutputVersion,
     ResearchProgramRecord,
     ResearchProject,
     ResearchRun,
@@ -55,6 +58,16 @@ class RunReviewResult:
     run: ResearchRun
     decisions: list[ReviewDecision]
     event: ResearchRunEvent
+
+
+@dataclass
+class OutputVersionDiff:
+    """Unified diff between two output versions."""
+
+    output: ResearchOutput
+    from_version: ResearchOutputVersion
+    to_version: ResearchOutputVersion
+    diff: str
 
 
 PROJECT_ROLE_ORDER = {
@@ -536,7 +549,108 @@ class ResearchStore:
         )
         self.session.add(output)
         self.session.flush()
+        self.create_output_version(
+            output,
+            change_summary="Initial staged output.",
+            created_by=created_by,
+        )
         return output
+
+    def create_output_version(
+        self,
+        output: ResearchOutput,
+        change_summary: Optional[str] = None,
+        created_by: Optional[str] = None,
+    ) -> ResearchOutputVersion:
+        """Snapshot the current output state as the next version."""
+        last_version = (
+            self.session.query(ResearchOutputVersion)
+            .filter_by(output_id=output.id)
+            .order_by(ResearchOutputVersion.version_number.desc())
+            .first()
+        )
+        version_number = 1 if last_version is None else last_version.version_number + 1
+        version = ResearchOutputVersion(
+            output=output,
+            version_number=version_number,
+            title=output.title,
+            status=output.status,
+            format=output.format,
+            content=output.content,
+            artifact_uri=output.artifact_uri,
+            source_json=output.source_json,
+            change_summary=change_summary,
+            created_by=created_by or output.created_by,
+        )
+        self.session.add(version)
+        self.session.flush()
+        return version
+
+    def update_output_content(
+        self,
+        output: ResearchOutput,
+        content: Optional[str] = None,
+        title: Optional[str] = None,
+        artifact_uri: Optional[str] = None,
+        source: Optional[dict[str, Any]] = None,
+        change_summary: Optional[str] = None,
+        created_by: Optional[str] = None,
+    ) -> ResearchOutputVersion:
+        """Update an output and record a new output version."""
+        if title is not None:
+            output.title = title
+        if content is not None:
+            output.content = content
+        if artifact_uri is not None:
+            output.artifact_uri = artifact_uri
+        if source is not None:
+            output.source_json = _json_dumps(source)
+        output.updated_at = utc_now()
+        return self.create_output_version(
+            output,
+            change_summary=change_summary,
+            created_by=created_by,
+        )
+
+    def list_output_versions(self, output: ResearchOutput) -> list[ResearchOutputVersion]:
+        """Return output versions in ascending version order."""
+        return (
+            self.session.query(ResearchOutputVersion)
+            .filter_by(output_id=output.id)
+            .order_by(ResearchOutputVersion.version_number)
+            .all()
+        )
+
+    def diff_output_versions(
+        self,
+        output: ResearchOutput,
+        from_version: int,
+        to_version: int,
+    ) -> OutputVersionDiff:
+        """Return a unified diff between two output versions."""
+        versions = {
+            version.version_number: version
+            for version in self.session.query(ResearchOutputVersion).filter_by(output_id=output.id)
+        }
+        left = versions.get(from_version)
+        right = versions.get(to_version)
+        if left is None:
+            raise ValueError(f"Output version not found: {from_version}")
+        if right is None:
+            raise ValueError(f"Output version not found: {to_version}")
+        diff = difflib.unified_diff(
+            (left.content or "").splitlines(),
+            (right.content or "").splitlines(),
+            fromfile=f"{output.id}@v{left.version_number}",
+            tofile=f"{output.id}@v{right.version_number}",
+            lineterm="",
+        )
+        return OutputVersionDiff(
+            output=output,
+            from_version=left,
+            to_version=right,
+            diff="\n".join(diff),
+        )
 
     def record_review_decision(
         self,
@@ -556,6 +670,30 @@ class ResearchStore:
         self.session.add(review)
         self.session.flush()
         return review
+
+    def record_audit_event(
+        self,
+        action: str,
+        target_type: str,
+        target_id: str,
+        project: Optional[ResearchProject] = None,
+        run: Optional[ResearchRun] = None,
+        actor_email: Optional[str] = None,
+        payload: Optional[dict[str, Any]] = None,
+    ) -> ResearchAuditEvent:
+        """Record an auditable collaboration or review event."""
+        event = ResearchAuditEvent(
+            project=project,
+            run=run,
+            actor_email=actor_email,
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            payload_json=_json_dumps(payload) if payload is not None else None,
+        )
+        self.session.add(event)
+        self.session.flush()
+        return event
 
     def review_run_outputs(
         self,
@@ -588,6 +726,20 @@ class ResearchStore:
             payload={
                 "decision": normalized_decision,
                 "reviewer": reviewer,
+                "rationale": rationale,
+                "output_ids": [output.id for output in run.outputs],
+                "review_decision_ids": [decision.id for decision in decisions],
+            },
+        )
+        self.record_audit_event(
+            action=f"run.{normalized_decision}",
+            target_type="run",
+            target_id=run.id,
+            project=run.project,
+            run=run,
+            actor_email=reviewer,
+            payload={
+                "decision": normalized_decision,
                 "rationale": rationale,
                 "output_ids": [output.id for output in run.outputs],
                 "review_decision_ids": [decision.id for decision in decisions],

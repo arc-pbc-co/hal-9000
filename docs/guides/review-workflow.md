@@ -1,7 +1,7 @@
 # Review Workflow
 
-HAL review workflows now have an authorized service API that can support both
-CLI usage and a future review UI.
+HAL review workflows now have an authorized service API that supports CLI usage,
+JSON adapters, and a lightweight browser review UI.
 
 ## Permission Model
 
@@ -113,3 +113,31 @@ hal research export-run <run-id> --as-user reviewer@example.com
 
 This keeps local administrative workflows lightweight while giving shared
 gateway/API adapters a reusable authorization path.
+
+## Browser Review UI
+
+Run the local HTTP review UI over the same authorized review services:
+
+```bash
+hal research review-ui --host 127.0.0.1 --port 9100
+```
+
+Then open:
+
+```text
+http://127.0.0.1:9100/
+```
+
+The UI exposes the staged review queue, run detail, output content, comments,
+comment resolution, and promote/reject/request-changes decisions. It uses the
+configured HAL database and applies the same user/team/project permissions as
+the CLI and service API.
+
+The HTTP adapter also provides JSON endpoints for future gateway or app surfaces:
+
+- `GET /api/review-queue?reviewer=<email>&project_slug=<slug>`
+- `GET /api/review-detail?run_id=<id>&reviewer=<email>`
+- `GET /api/review-comments?target_type=output&target_id=<id>&viewer=<email>`
+- `POST /api/review-comment`
+- `POST /api/review-comment/resolve`
+- `POST /api/review-run`

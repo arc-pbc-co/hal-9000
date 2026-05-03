@@ -61,6 +61,11 @@ class Document(Base):
     """Represents a processed research document (PDF)."""
 
     __tablename__ = "documents"
+    __table_args__ = (
+        Index("ix_documents_source_identifier", "source_identifier"),
+        Index("ix_documents_version_group_key", "version_group_key"),
+        Index("ix_documents_normalized_doi", "normalized_doi"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
 
@@ -99,6 +104,23 @@ class Document(Base):
     # Acquisition metadata
     acquisition_source: Mapped[Optional[str]] = mapped_column(String(50))  # Provider name
     acquisition_query: Mapped[Optional[str]] = mapped_column(String(512))  # Original search topic
+
+    # Corpus hardening metadata
+    source_identifier: Mapped[Optional[str]] = mapped_column(String(512))
+    source_version: Mapped[Optional[str]] = mapped_column(String(100), default="v1")
+    version_group_key: Mapped[Optional[str]] = mapped_column(String(512))
+    is_current_version: Mapped[bool] = mapped_column(Boolean, default=True)
+    supersedes_document_id: Mapped[Optional[str]] = mapped_column(String(36))
+    refresh_policy: Mapped[str] = mapped_column(String(50), default="manual")
+    refresh_interval_days: Mapped[Optional[int]] = mapped_column(Integer)
+    last_refreshed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    next_refresh_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    normalized_doi: Mapped[Optional[str]] = mapped_column(String(256))
+    citation_key: Mapped[Optional[str]] = mapped_column(String(256))
+    normalized_citation: Mapped[Optional[str]] = mapped_column(Text)
+    source_quality_score: Mapped[Optional[float]] = mapped_column(Float)
+    source_quality_label: Mapped[Optional[str]] = mapped_column(String(50))
+    source_quality_json: Mapped[Optional[str]] = mapped_column(Text)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
@@ -624,9 +646,51 @@ class ResearchOutput(Base):
     review_decisions: Mapped[list["ReviewDecision"]] = relationship(
         "ReviewDecision", back_populates="output"
     )
+    versions: Mapped[list["ResearchOutputVersion"]] = relationship(
+        "ResearchOutputVersion",
+        back_populates="output",
+        order_by="ResearchOutputVersion.version_number",
+    )
 
     def __repr__(self) -> str:
         return f"<ResearchOutput(id={self.id}, type={self.output_type}, status={self.status})>"
+
+
+class ResearchOutputVersion(Base):
+    """A point-in-time version of a generated research output."""
+
+    __tablename__ = "research_output_versions"
+    __table_args__ = (
+        UniqueConstraint(
+            "output_id",
+            "version_number",
+            name="uq_research_output_versions_output_number",
+        ),
+        Index("ix_research_output_versions_output", "output_id", "version_number"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    output_id: Mapped[str] = mapped_column(String(36), ForeignKey("research_outputs.id"), nullable=False)
+
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    status: Mapped[str] = mapped_column(String(50), nullable=False)
+    format: Mapped[str] = mapped_column(String(50), nullable=False)
+    content: Mapped[Optional[str]] = mapped_column(Text)
+    artifact_uri: Mapped[Optional[str]] = mapped_column(String(1024))
+    source_json: Mapped[Optional[str]] = mapped_column(Text)
+    change_summary: Mapped[Optional[str]] = mapped_column(Text)
+    created_by: Mapped[Optional[str]] = mapped_column(String(256))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+    output: Mapped["ResearchOutput"] = relationship("ResearchOutput", back_populates="versions")
+
+    def __repr__(self) -> str:
+        return (
+            "<ResearchOutputVersion("
+            f"id={self.id}, output_id={self.output_id}, version={self.version_number}"
+            ")>"
+        )
 
 
 class ReviewDecision(Base):
@@ -685,6 +749,274 @@ class ReviewAnnotation(Base):
 
     def __repr__(self) -> str:
         return f"<ReviewAnnotation(id={self.id}, target={self.target_type}:{self.target_id})>"
+
+
+class CorpusDedupeReport(Base):
+    """A persisted duplicate-source report for corpus curation."""
+
+    __tablename__ = "corpus_dedupe_reports"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    report_type: Mapped[str] = mapped_column(String(100), default="document_duplicates")
+    scope: Mapped[str] = mapped_column(String(256), default="all_documents")
+    duplicate_group_count: Mapped[int] = mapped_column(Integer, default=0)
+    duplicate_document_count: Mapped[int] = mapped_column(Integer, default=0)
+    report_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by: Mapped[Optional[str]] = mapped_column(String(256))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+    def __repr__(self) -> str:
+        return (
+            "<CorpusDedupeReport("
+            f"id={self.id}, groups={self.duplicate_group_count}, "
+            f"documents={self.duplicate_document_count}"
+            ")>"
+        )
+
+
+class ResearchGraphEdge(Base):
+    """A typed knowledge-graph relationship between research entities."""
+
+    __tablename__ = "research_graph_edges"
+    __table_args__ = (
+        Index("ix_research_graph_edges_source", "source_type", "source_id"),
+        Index("ix_research_graph_edges_target", "target_type", "target_id"),
+        Index("ix_research_graph_edges_relationship", "relationship_type"),
+        Index("ix_research_graph_edges_project_run", "project_id", "run_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    project_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("research_projects.id")
+    )
+    run_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("research_runs.id"))
+
+    source_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(512), nullable=False)
+    relationship_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    target_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    target_id: Mapped[str] = mapped_column(String(512), nullable=False)
+
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    evidence_json: Mapped[Optional[str]] = mapped_column(Text)
+    created_by: Mapped[Optional[str]] = mapped_column(String(256))
+    status: Mapped[str] = mapped_column(String(50), default="active")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now
+    )
+
+    project: Mapped[Optional["ResearchProject"]] = relationship("ResearchProject")
+    run: Mapped[Optional["ResearchRun"]] = relationship("ResearchRun")
+
+    def __repr__(self) -> str:
+        return (
+            "<ResearchGraphEdge("
+            f"id={self.id}, {self.source_type}:{self.source_id} "
+            f"{self.relationship_type} {self.target_type}:{self.target_id}"
+            ")>"
+        )
+
+
+class ResearchCollection(Base):
+    """A named project collection of research entities."""
+
+    __tablename__ = "research_collections"
+    __table_args__ = (
+        UniqueConstraint("project_id", "slug", name="uq_research_collections_project_slug"),
+        Index("ix_research_collections_project", "project_id", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("research_projects.id"), nullable=False
+    )
+
+    name: Mapped[str] = mapped_column(String(256), nullable=False)
+    slug: Mapped[str] = mapped_column(String(256), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    owner_email: Mapped[Optional[str]] = mapped_column(String(320))
+    visibility: Mapped[str] = mapped_column(String(50), default="project")
+    status: Mapped[str] = mapped_column(String(50), default="active")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now
+    )
+
+    project: Mapped["ResearchProject"] = relationship("ResearchProject")
+    items: Mapped[list["ResearchCollectionItem"]] = relationship(
+        "ResearchCollectionItem",
+        back_populates="collection",
+        order_by="ResearchCollectionItem.created_at",
+    )
+
+    def __repr__(self) -> str:
+        return f"<ResearchCollection(id={self.id}, slug={self.slug})>"
+
+
+class ResearchCollectionItem(Base):
+    """One entity saved into a research collection."""
+
+    __tablename__ = "research_collection_items"
+    __table_args__ = (
+        UniqueConstraint(
+            "collection_id",
+            "target_type",
+            "target_id",
+            name="uq_research_collection_items_target",
+        ),
+        Index("ix_research_collection_items_target", "target_type", "target_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    collection_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("research_collections.id"), nullable=False
+    )
+
+    target_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    target_id: Mapped[str] = mapped_column(String(512), nullable=False)
+    note: Mapped[Optional[str]] = mapped_column(Text)
+    added_by: Mapped[Optional[str]] = mapped_column(String(320))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+    collection: Mapped["ResearchCollection"] = relationship(
+        "ResearchCollection", back_populates="items"
+    )
+
+    def __repr__(self) -> str:
+        return f"<ResearchCollectionItem(id={self.id}, target={self.target_type}:{self.target_id})>"
+
+
+class SavedSearch(Base):
+    """A reusable project search definition."""
+
+    __tablename__ = "saved_searches"
+    __table_args__ = (
+        UniqueConstraint("project_id", "name", name="uq_saved_searches_project_name"),
+        Index("ix_saved_searches_project", "project_id", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("research_projects.id"), nullable=False
+    )
+
+    name: Mapped[str] = mapped_column(String(256), nullable=False)
+    query_text: Mapped[str] = mapped_column(Text, nullable=False)
+    target: Mapped[str] = mapped_column(String(50), default="memory")
+    filters_json: Mapped[Optional[str]] = mapped_column(Text)
+    owner_email: Mapped[Optional[str]] = mapped_column(String(320))
+    visibility: Mapped[str] = mapped_column(String(50), default="project")
+    status: Mapped[str] = mapped_column(String(50), default="active")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now
+    )
+
+    project: Mapped["ResearchProject"] = relationship("ResearchProject")
+
+    def __repr__(self) -> str:
+        return f"<SavedSearch(id={self.id}, name={self.name})>"
+
+
+class SharedProjectView(Base):
+    """A saved project dashboard/review/list view."""
+
+    __tablename__ = "shared_project_views"
+    __table_args__ = (
+        UniqueConstraint("project_id", "slug", name="uq_shared_project_views_project_slug"),
+        Index("ix_shared_project_views_project", "project_id", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("research_projects.id"), nullable=False
+    )
+
+    name: Mapped[str] = mapped_column(String(256), nullable=False)
+    slug: Mapped[str] = mapped_column(String(256), nullable=False)
+    view_type: Mapped[str] = mapped_column(String(50), default="dashboard")
+    config_json: Mapped[str] = mapped_column(Text, nullable=False)
+    owner_email: Mapped[Optional[str]] = mapped_column(String(320))
+    visibility: Mapped[str] = mapped_column(String(50), default="project")
+    status: Mapped[str] = mapped_column(String(50), default="active")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now
+    )
+
+    project: Mapped["ResearchProject"] = relationship("ResearchProject")
+
+    def __repr__(self) -> str:
+        return f"<SharedProjectView(id={self.id}, slug={self.slug})>"
+
+
+class ResearchNotification(Base):
+    """A queued or delivered collaboration notification."""
+
+    __tablename__ = "research_notifications"
+    __table_args__ = (
+        Index("ix_research_notifications_recipient_status", "recipient_email", "status"),
+        Index("ix_research_notifications_project_run", "project_id", "run_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    project_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("research_projects.id")
+    )
+    run_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("research_runs.id"))
+
+    recipient_email: Mapped[Optional[str]] = mapped_column(String(320))
+    channel: Mapped[str] = mapped_column(String(50), default="in_app")
+    notification_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    body: Mapped[Optional[str]] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(50), default="pending")
+    payload_json: Mapped[Optional[str]] = mapped_column(Text)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    read_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+    project: Mapped[Optional["ResearchProject"]] = relationship("ResearchProject")
+    run: Mapped[Optional["ResearchRun"]] = relationship("ResearchRun")
+
+    def __repr__(self) -> str:
+        return f"<ResearchNotification(id={self.id}, type={self.notification_type})>"
+
+
+class ResearchAuditEvent(Base):
+    """An auditable collaboration or review event."""
+
+    __tablename__ = "research_audit_events"
+    __table_args__ = (
+        Index("ix_research_audit_events_project_run", "project_id", "run_id"),
+        Index("ix_research_audit_events_target", "target_type", "target_id"),
+        Index("ix_research_audit_events_action", "action"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    project_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("research_projects.id")
+    )
+    run_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("research_runs.id"))
+
+    actor_email: Mapped[Optional[str]] = mapped_column(String(320))
+    action: Mapped[str] = mapped_column(String(100), nullable=False)
+    target_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    target_id: Mapped[str] = mapped_column(String(512), nullable=False)
+    payload_json: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+    project: Mapped[Optional["ResearchProject"]] = relationship("ResearchProject")
+    run: Mapped[Optional["ResearchRun"]] = relationship("ResearchRun")
+
+    def __repr__(self) -> str:
+        return f"<ResearchAuditEvent(id={self.id}, action={self.action})>"
 
 
 class ProcessingJob(Base):

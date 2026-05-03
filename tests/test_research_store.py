@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from hal9000.db.models import Document, ReviewDecision, init_db
+from hal9000.db.models import Document, ResearchAuditEvent, ReviewDecision, init_db
 from hal9000.db.store import ClaimEvidence, ResearchStore
 from hal9000.research import load_program, render_program_template
 
@@ -63,8 +63,41 @@ def test_store_persists_program_run_output_and_review(temp_directory: Path):
         assert saved_project.programs[0].name == "Creep Review"
         assert json.loads(saved_project.runs[0].budget_json)["max_papers"] == 25
         assert saved_project.outputs[0].status == "promoted"
+        assert saved_project.outputs[0].versions[0].version_number == 1
         assert decision.output.status == "promoted"
         assert json.loads(record.tags) == ["literature-review"]
+    finally:
+        session.close()
+
+
+def test_store_versions_and_diffs_outputs(temp_directory: Path):
+    """The store should snapshot output changes and produce unified diffs."""
+    _, session_factory = init_db(f"sqlite:///{temp_directory / 'output_diff.db'}")
+    session = session_factory()
+
+    try:
+        store = ResearchStore(session)
+        output = store.stage_output(
+            title="Brief",
+            output_type="research_brief",
+            content="# Brief\n\nInitial content.",
+            created_by="hal",
+        )
+        second_version = store.update_output_content(
+            output,
+            content="# Brief\n\nSource-rich content with citations.",
+            change_summary="Added source-rich citations.",
+            created_by="reviewer@example.com",
+        )
+        diff = store.diff_output_versions(output, from_version=1, to_version=2)
+        session.commit()
+
+        versions = store.list_output_versions(output)
+
+        assert [version.version_number for version in versions] == [1, 2]
+        assert second_version.change_summary == "Added source-rich citations."
+        assert "-Initial content." in diff.diff
+        assert "+Source-rich content with citations." in diff.diff
     finally:
         session.close()
 
@@ -289,6 +322,7 @@ def test_store_reviews_all_staged_run_outputs(
         assert second.status == stored_decision
         assert len(result.decisions) == 2
         assert session.query(ReviewDecision).count() == 2
+        assert session.query(ResearchAuditEvent).one().action == f"run.{stored_decision}"
         payload = json.loads(result.event.payload_json)
         assert payload["decision"] == stored_decision
         assert payload["reviewer"] == "reviewer@example.com"

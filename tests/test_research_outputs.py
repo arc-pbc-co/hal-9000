@@ -3,6 +3,9 @@
 import json
 from pathlib import Path
 
+from click.testing import CliRunner
+
+from hal9000.cli import cli
 from hal9000.db.models import Document, init_db
 from hal9000.db.store import ClaimEvidence, ResearchStore
 from hal9000.research import ResearchOutputGenerator, load_program
@@ -33,6 +36,9 @@ def test_output_generator_stages_program_contract_outputs(temp_directory: Path):
             source_type="local",
             file_hash="d" * 64,
             title="Source Paper",
+            year=2024,
+            normalized_citation="Smith et al. (2024). Source Paper.",
+            citation_key="smith-2024-source-paper",
         )
         session.add(document)
         session.flush()
@@ -52,6 +58,14 @@ def test_output_generator_stages_program_contract_outputs(temp_directory: Path):
                 quote="Single crystal samples showed superior creep resistance.",
                 locator="p. 4",
                 confidence=0.88,
+                provenance={
+                    "figures": [
+                        {
+                            "label": "Figure 2",
+                            "caption": "Creep rupture comparison.",
+                        }
+                    ]
+                },
             ),
         )
 
@@ -64,8 +78,13 @@ def test_output_generator_stages_program_contract_outputs(temp_directory: Path):
         assert output_types == ["research_brief", "evidence_table", "open_questions"]
         assert all(output.status == "staged" for output in staged.outputs)
         assert "Single crystal samples" in staged.outputs[0].content
+        assert "[S1]" in staged.outputs[0].content
+        assert "## Sources" in staged.outputs[0].content
+        assert "Figure 2" in staged.outputs[0].content
         assert "| Single crystal samples" in staged.outputs[1].content
+        assert "| [S1] | Source Paper | p. 4 |" in staged.outputs[1].content
         assert "contradictory sources" in staged.outputs[2].content
+        assert staged.outputs[0].versions[0].version_number == 1
         assert run.status == "staged"
         assert report.output_type == "run_report"
         assert "Run Report" in report.content
@@ -78,6 +97,73 @@ def test_output_generator_stages_program_contract_outputs(temp_directory: Path):
         ]
     finally:
         session.close()
+
+
+def test_output_version_cli_lists_and_diffs_versions(temp_directory: Path):
+    """CLI should list output versions and render diffs."""
+    db_path = temp_directory / "output_cli.db"
+    config_path = temp_directory / "config.yaml"
+    config_path.write_text(
+        f"""hal9000:
+  database:
+    url: sqlite:///{db_path}
+"""
+    )
+    _, session_factory = init_db(f"sqlite:///{db_path}")
+    session = session_factory()
+    try:
+        store = ResearchStore(session)
+        output = store.stage_output(
+            title="CLI Brief",
+            output_type="research_brief",
+            content="# Brief\n\nInitial.",
+            created_by="hal",
+        )
+        store.update_output_content(
+            output,
+            content="# Brief\n\nUpdated with citations.",
+            change_summary="Added citations.",
+            created_by="reviewer@example.com",
+        )
+        output_id = output.id
+        session.commit()
+    finally:
+        session.close()
+
+    runner = CliRunner()
+    versions_result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(config_path),
+            "research",
+            "output-versions",
+            output_id,
+            "--json",
+        ],
+        obj={},
+    )
+    assert versions_result.exit_code == 0, versions_result.output
+    assert '"version_number": 2' in versions_result.output
+
+    diff_result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(config_path),
+            "research",
+            "diff-output",
+            output_id,
+            "--from-version",
+            "1",
+            "--to-version",
+            "2",
+        ],
+        obj={},
+    )
+    assert diff_result.exit_code == 0, diff_result.output
+    assert "-Initial." in diff_result.output
+    assert "+Updated with citations." in diff_result.output
 
 
 def test_output_generator_renders_json_contract_outputs(temp_directory: Path):
@@ -133,6 +219,8 @@ def test_output_generator_renders_json_contract_outputs(temp_directory: Path):
         assert first_payload["output_type"] == "adam_context"
         assert first_payload["metadata"]["program_id"] == record.id
         assert first_payload["source_claims"][0]["claim_text"] == "Heat treatment improves creep resistance."
+        assert first_payload["source_claims"][0]["citation"]["marker"] == "[S1]"
+        assert first_payload["citations"][0]["marker"] == "[S1]"
         assert staged.outputs[0].format == "json"
 
         hypothesis_payload = json.loads(staged.outputs[1].content)

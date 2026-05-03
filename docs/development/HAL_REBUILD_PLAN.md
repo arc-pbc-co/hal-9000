@@ -53,15 +53,18 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add project permission enforcement for review service/API entry points.
 - [x] Add SSO/OIDC planning and verified-claim to user/team mapping.
 - [x] Add comments and annotations on outputs and claims for review UI workflows.
-
-### In Progress
-
-- [ ] Add HTTP/gateway adapter for review UI workflows.
+- [x] Add lightweight HTTP adapter and browser review UI for authorized review workflows.
+- [x] Add corpus hardening fields and service for document versioning, refresh policy, citation normalization, source quality, and dedupe reports.
+- [x] Extend semantic search beyond chunks to extracted claims and research outputs.
+- [x] Add graph relationship records for cites, supports, contradicts, uses method, studies material, and reports property.
+- [x] Replace first-pass output renderers with source-rich citation renderers and add output versioning/diffing.
+- [x] Add collections, saved searches, shared project views, notification records, and audit views.
 
 ### Remaining
 
-- [ ] Add document versioning and source refresh policy.
-- [ ] Add comments, annotations, collections, saved searches, and shared project views.
+- [ ] Add scheduled source refresh execution and claim-level dedupe reports.
+- [ ] Add richer figure/table extraction and export rendering.
+- [ ] Add notification delivery workers for Slack/email/Sheets and richer audit dashboards.
 
 ## Master Completion Checklist
 
@@ -84,17 +87,19 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add local object storage for PDFs, extracted text, tables, figures, and output artifacts.
 - [x] Select S3-compatible production object storage and boto3 credential resolution.
 - [x] Add S3-compatible object store backend.
-- [ ] Add document versioning and source refresh policy.
-- [ ] Add citation normalization and source quality fields.
-- [ ] Add deduplication reports for documents and claims.
+- [x] Add document versioning and source refresh policy metadata.
+- [x] Add citation normalization and source quality fields.
+- [x] Add persisted deduplication reports for documents.
+- [ ] Add scheduled source refresh execution.
+- [ ] Add claim-level deduplication reports.
 
 ### Phase C: Retrieval and Knowledge Layer
 
 - [x] Decide pgvector-first versus dedicated vector DB.
 - [x] Add chunk embedding record workflow.
 - [x] Add semantic search service over chunks.
-- [ ] Extend semantic search service over claims and outputs.
-- [ ] Add graph relationship tables or graph adapter for cites, supports, contradicts, uses method, studies material, and reports property.
+- [x] Extend semantic search service over claims and outputs.
+- [x] Add graph relationship tables and service for cites, supports, contradicts, uses method, studies material, and reports property.
 - [x] Add retrieval tests over a representative local corpus slice.
 
 ### Phase D: Agent Programs and Orchestration
@@ -124,7 +129,9 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add ADAM context schema validation.
 - [x] Add Obsidian/Markdown export from canonical outputs.
 - [x] Add JSON export API for dashboards and downstream tools.
-- [ ] Add output versioning and diffing.
+- [x] Add output versioning and diffing.
+- [x] Add source-rich renderers using real citations, extracted claims, and first figure/table references.
+- [ ] Add richer figure/table extraction and export rendering.
 
 ### Phase F: Collaboration and Review
 
@@ -132,9 +139,12 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add review workflow commands/API: promote, reject, request changes.
 - [x] Add authorized review queue/detail/decision service API.
 - [x] Add comments and annotations on outputs and claims.
-- [ ] Add collections, saved searches, and shared project views.
-- [ ] Add notification hooks for review-ready runs.
-- [ ] Add audit views for run history and promotion decisions.
+- [x] Add lightweight browser review UI and HTTP adapter over review services.
+- [x] Add collections, saved searches, and shared project views.
+- [x] Add notification records and review-ready notification hooks.
+- [x] Add audit views for run history and promotion decisions.
+- [ ] Add notification delivery workers for Slack/email/Sheets.
+- [ ] Add richer browser audit dashboards.
 
 ### Phase G: Firmwide Access and Governance
 
@@ -157,12 +167,13 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 
 ### Phase I: Non-CLI App Surfaces
 
-- [ ] Add Slack app for firm-wide research interaction.
-- [ ] Add Slack channel workflow for `#hal-9000-dev`, review-ready run notifications, run summaries, and export links.
-- [ ] Add Slack commands/buttons for queueing runs, checking run status, opening review detail, adding comments, and promoting/requesting changes.
-- [ ] Add Google Sheets app for non-CLI run trackers, review queues, export indexes, and lightweight project dashboards.
-- [ ] Add Sheets sync jobs backed by HAL JSON/dashboard exports.
-- [ ] Add permissions mapping so Slack and Sheets actions use the same OIDC/user/team/project access model as HAL services.
+- [x] Add first notification delivery workers for in-app, Slack webhook, SMTP email, and Sheets-compatible CSV sync.
+- [x] Add first Slack app service contract for firm-wide research interaction.
+- [ ] Add Slack channel workflow for `#hal-9000-dev`, run summaries, export links, and HTTP event endpoints.
+- [x] Add Slack commands/buttons for queueing runs, checking run status, opening review detail, adding comments, and promoting/requesting changes.
+- [x] Add Google Sheets sync jobs for non-CLI run trackers, review queues, outputs, and audit dashboards.
+- [ ] Add Sheets writeback actions for comments, decisions, and run queueing.
+- [x] Add permissions mapping so Slack and Sheets actions use the same OIDC/user/team/project access model as HAL services.
 
 ## Milestone 1: Research Program Contract
 
@@ -243,6 +254,16 @@ Implemented in this slice:
 - `ResearchAuthorizer` and `ResearchReviewService` now enforce reviewer access for review queue, detail, and decision workflows.
 - `OIDCIdentityMapper` now maps verified OIDC claims into HAL users, global admin role, and HAL team memberships.
 - `ReviewAnnotationService` now supports authorized comments and annotations on outputs and extracted claims.
+- `hal research review-ui` now runs a lightweight HTTP review surface over the authorized queue, detail, comment, and decision services.
+- `CorpusHardeningService`, `hal research harden-corpus`, and `hal research dedupe-report` now attach stable source/version/citation/quality metadata and persist duplicate-document reports.
+- `VectorRepository.search_memory` and `hal research search-memory` now search extracted claims and research outputs through the embedding provider contract.
+- `ResearchGraphService`, `hal research add-graph-edge`, and `hal research graph-edges` now manage typed graph edges across documents, chunks, claims, outputs, and literal method/material/property/concept nodes.
+- `ResearchOutputGenerator` now renders citation-marked briefs/tables/JSON from extracted claims and evidence, while `research_output_versions`, `hal research output-versions`, and `hal research diff-output` provide output history and review diffs.
+- `CollaborationService` and CLI commands now manage collections, saved searches, shared views, review-ready notifications, notification lists, and audit-event views.
+- `NotificationDeliveryService` and `hal research deliver-notifications` now process durable in-app, Slack webhook, SMTP email, and Sheets-compatible CSV notification queues.
+- `SlackAppService`, `hal research slack-command`, and `hal research slack-action` now provide Slack slash-command/button contracts for queueing runs, status checks, review queues, comments, and review decisions.
+- `SheetsSyncService` and `hal research sync-sheets` now sync runs, review queues, outputs, and audit rows to Google Sheets through the native Values API.
+- `hal research review-ui` now includes an authorized audit dashboard with filters, counts, and event detail alongside queue, comments, and review decisions.
 
 ## Milestone 3: Research Run Orchestrator
 
@@ -298,11 +319,9 @@ Deliverables:
 
 ## Immediate Next Tasks
 
-- Add HTTP/gateway adapter for review UI workflows.
+- Add scheduled source refresh execution and claim-level deduplication reports.
+- Add HTTP/gateway routes for Slack commands/actions and Google Sheets writeback workflows.
+- Add richer figure/table extraction and export rendering.
 - Add Slack app and `#hal-9000-dev` channel workflow for non-CLI team updates.
-- Add Google Sheets app and export sync for non-CLI project tracking.
-- Add document versioning and source refresh policy.
-- Add citation normalization, source quality fields, and deduplication reports.
-- Extend semantic search over claims and outputs.
-- Add collections, saved searches, shared project views, notifications, and audit views.
+- Add Google Sheets writeback for non-CLI comments, review decisions, and run queueing.
 - Add retention, secrets-management, compliance, CI, and release-process hardening.
