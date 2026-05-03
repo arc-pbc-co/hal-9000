@@ -12,7 +12,9 @@ from hal9000.config import (
     ProcessingConfig,
     Settings,
     SourcesConfig,
+    StorageConfig,
     TaxonomyConfig,
+    VectorConfig,
     get_settings,
     load_settings,
 )
@@ -188,6 +190,72 @@ class TestDatabaseConfig:
         assert "postgresql" in config.url
 
 
+class TestStorageConfig:
+    """Tests for StorageConfig."""
+
+    def test_default_values(self):
+        """Test default values."""
+        config = StorageConfig()
+
+        assert config.backend == "local"
+        assert ".hal9000_objects" in config.root_path
+
+    def test_custom_values(self):
+        """Test custom values."""
+        config = StorageConfig(
+            backend="local",
+            root_path="/custom/storage",
+        )
+
+        assert config.backend == "local"
+        assert config.root_path == "/custom/storage"
+
+    def test_s3_values(self):
+        """Test S3-compatible settings."""
+        config = StorageConfig(
+            backend="s3",
+            bucket="hal-artifacts",
+            prefix="hal9000/",
+            region="us-east-1",
+            endpoint_url="https://s3.example.com",
+        )
+
+        assert config.backend == "s3"
+        assert config.bucket == "hal-artifacts"
+        assert config.prefix == "hal9000/"
+        assert config.region == "us-east-1"
+        assert config.endpoint_url == "https://s3.example.com"
+
+
+class TestVectorConfig:
+    """Tests for VectorConfig."""
+
+    def test_default_values(self):
+        """Test default values."""
+        config = VectorConfig()
+
+        assert config.backend == "pgvector"
+        assert config.embedding_provider == "fake"
+        assert config.embedding_dimension == 1536
+        assert config.embedding_model is None
+        assert config.retrieval_limit == 5
+
+    def test_custom_values(self):
+        """Test custom values."""
+        config = VectorConfig(
+            backend="pgvector",
+            embedding_provider="openai",
+            embedding_dimension=3072,
+            embedding_model="text-embedding-3-large",
+            retrieval_limit=10,
+        )
+
+        assert config.embedding_provider == "openai"
+        assert config.embedding_dimension == 3072
+        assert config.embedding_model == "text-embedding-3-large"
+        assert config.retrieval_limit == 10
+
+
 class TestGatewayConfig:
     """Tests for GatewayConfig."""
 
@@ -229,6 +297,8 @@ class TestSettings:
         assert isinstance(settings.processing, ProcessingConfig)
         assert isinstance(settings.taxonomy, TaxonomyConfig)
         assert isinstance(settings.database, DatabaseConfig)
+        assert isinstance(settings.storage, StorageConfig)
+        assert isinstance(settings.vector, VectorConfig)
         assert isinstance(settings.gateway, GatewayConfig)
         assert settings.log_level == "INFO"
         assert settings.verbose is False
@@ -259,6 +329,13 @@ class TestSettings:
         cache_path = settings.get_cache_path()
 
         assert isinstance(cache_path, Path)
+
+    def test_get_storage_path(self):
+        """Test get_storage_path method."""
+        settings = Settings()
+        storage_path = settings.get_storage_path()
+
+        assert isinstance(storage_path, Path)
 
     def test_custom_settings(self):
         """Test creating settings with custom values."""

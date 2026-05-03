@@ -44,6 +44,55 @@ Convenience function to get a new session.
 
 ## Models
 
+### Shared Research Store Models
+
+The firm-wide rebuild adds canonical records for collaborative research work:
+
+| Model | Purpose |
+|-------|---------|
+| `ResearchProject` | Shared workspace for a research area, team, or initiative |
+| `ResearchProgramRecord` | Persisted autoresearch-style `program.md` contract |
+| `ResearchRun` | Bounded execution of a research program |
+| `ResearchRunEvent` | Ordered append-only event log for a run |
+| `DocumentChunk` | Reusable source text unit for retrieval and extraction |
+| `ExtractedClaim` | Source-backed claim extracted from a document or run |
+| `EvidenceLink` | Precise evidence pointer supporting an extracted claim |
+| `ResearchOutput` | Generated artifact staged for review or promotion |
+| `ReviewDecision` | Human or policy decision on a staged output |
+
+The first implementation keeps JSON payloads in text columns so local SQLite
+development remains compatible. The production target is Postgres with
+migrations and richer JSON/vector support.
+
+### ResearchStore
+
+`ResearchStore` is the repository API over the shared research store models.
+
+Current operations:
+
+- `create_project`
+- `get_project_by_slug`
+- `save_program`
+- `create_run`
+- `append_run_event`
+- `list_run_events`
+- `update_run_status`
+- `add_document_chunk`
+- `add_claim_with_evidence`
+- `stage_output`
+- `record_review_decision`
+
+The `hal research` CLI uses this service for `create-project`, `save-program`,
+and `queue-run`.
+
+`ResearchOutputGenerator` builds on `ResearchStore` to stage all outputs required
+by a saved program contract and to generate run reports from run events.
+`BoundedResearchWorker` uses the same store to execute queued runs through the
+first bounded lifecycle path.
+
+Schema changes are now managed by Alembic. See
+[Migrations and Object Storage](../development/migrations-and-storage.md).
+
 ### Document
 
 Represents a processed document.

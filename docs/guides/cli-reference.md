@@ -18,6 +18,29 @@ hal [OPTIONS] COMMAND [ARGS]
 
 ## Commands
 
+### Research Programs
+
+```bash
+hal research init-program ./program.md
+hal research validate-program ./program.md
+hal research create-project superalloys --name "Superalloys"
+hal research save-program ./program.md --project-slug superalloys
+hal research queue-run --program-id <saved-program-id>
+hal research runs --project-slug superalloys
+hal research run-log <run-id>
+hal research search-chunks "single crystal creep resistance" --project-slug superalloys
+hal research log-run-event <run-id> --event-type tool.search
+hal research update-run <run-id> --status running
+hal research execute-run <run-id> --actor hal-worker
+```
+
+These commands create and validate autoresearch-style research programs, persist
+them into the shared store, queue bounded research run records, and inspect or
+advance the run lifecycle. `execute-run` runs the first bounded worker path and
+stages required outputs plus a run report. `search-chunks` queries embedded
+document chunks through the configured embedding provider and returns the first
+semantic memory results for a project or run.
+
 ### `hal acquire`
 
 Search for and download research papers on a topic.

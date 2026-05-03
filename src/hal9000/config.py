@@ -99,6 +99,33 @@ class DatabaseConfig(BaseSettings):
     )
 
 
+class StorageConfig(BaseSettings):
+    """Object storage configuration."""
+
+    backend: str = Field(default="local", description="Object storage backend")
+    root_path: str = Field(
+        default="./.hal9000_objects",
+        description="Root path for the local object storage backend",
+    )
+    bucket: Optional[str] = Field(default=None, description="S3-compatible bucket name")
+    prefix: str = Field(default="", description="Optional S3-compatible object key prefix")
+    region: Optional[str] = Field(default=None, description="S3-compatible storage region")
+    endpoint_url: Optional[str] = Field(
+        default=None,
+        description="Optional S3-compatible endpoint URL for non-AWS storage",
+    )
+
+
+class VectorConfig(BaseSettings):
+    """Vector storage and embedding configuration."""
+
+    backend: str = Field(default="pgvector", description="Vector storage backend")
+    embedding_provider: str = Field(default="fake", description="Embedding provider name")
+    embedding_dimension: int = Field(default=1536, description="Embedding vector dimension")
+    embedding_model: Optional[str] = Field(default=None, description="Embedding model name")
+    retrieval_limit: int = Field(default=5, description="Default semantic retrieval result limit")
+
+
 class AcquisitionConfig(BaseSettings):
     """Paper acquisition configuration."""
 
@@ -170,6 +197,8 @@ class Settings(BaseSettings):
     processing: ProcessingConfig = Field(default_factory=ProcessingConfig)
     taxonomy: TaxonomyConfig = Field(default_factory=TaxonomyConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
+    storage: StorageConfig = Field(default_factory=StorageConfig)
+    vector: VectorConfig = Field(default_factory=VectorConfig)
     acquisition: AcquisitionConfig = Field(default_factory=AcquisitionConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
 
@@ -202,6 +231,10 @@ class Settings(BaseSettings):
     def get_acquisition_dir(self) -> Path:
         """Get expanded acquisition download directory."""
         return Path(self.acquisition.download_dir).expanduser()
+
+    def get_storage_path(self) -> Path:
+        """Get expanded object storage root path."""
+        return Path(self.storage.root_path).expanduser()
 
 
 def load_settings(config_file: Optional[Path] = None) -> Settings:

@@ -146,7 +146,7 @@ test-vault/
 test-papers/
 
 # Research PDFs and reference materials
-research/
+/research/
 *.pdf
 
 # Credentials

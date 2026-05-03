@@ -322,8 +322,8 @@ class SearchEngine:
             Results with updated relevance_score, sorted by relevance
         """
         if not self._anthropic:
-            # Without Claude, just return as-is
-            return results
+            # Without Claude, use any provider/local scores already attached.
+            return sorted(results, key=lambda x: x.relevance_score, reverse=True)
 
         scored_results = []
 
@@ -394,14 +394,38 @@ class SearchEngine:
         Returns:
             Filtered and sorted list of relevant results
         """
+        if max_results <= 0:
+            logger.info(
+                f"Relevance filtering: {len(results)} -> 0 "
+                f"(threshold={threshold}, max_results={max_results})"
+            )
+            return []
+
         # Score all results
         scored = await self.score_relevance(results, topic)
+
+        # Log score distribution at DEBUG level for diagnostics
+        if scored:
+            scores = [round(r.relevance_score, 3) for r in scored[:10]]
+            logger.debug(f"Relevance score distribution (top 10): {scores}")
 
         # Filter by threshold
         filtered = [r for r in scored if r.relevance_score >= threshold]
 
-        # Limit to max_results
-        filtered = filtered[:max_results]
+        # Fallback: if nothing cleared the threshold, return the best
+        # available results rather than an empty list, so the pipeline
+        # can still run.  Warn loudly so the user knows quality is low.
+        if not filtered and scored:
+            filtered = scored[:max_results]
+            logger.warning(
+                f"No papers met relevance threshold={threshold}. "
+                f"Returning top {len(filtered)} result(s) by score "
+                f"(best score: {filtered[0].relevance_score:.2f}). "
+                "Consider refining your search query."
+            )
+        else:
+            # Limit to max_results
+            filtered = filtered[:max_results]
 
         logger.info(
             f"Relevance filtering: {len(results)} -> {len(filtered)} "

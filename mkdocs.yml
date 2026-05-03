@@ -45,6 +45,7 @@ theme:
 nav:
   - Home: index.md
   - Quick Start: guides/quick-start.md
+  - Firm-Wide Research OS: guides/firm-wide-research-os.md
   - Guides:
     - Getting Started: guides/getting-started.md
     - Configuration: guides/configuration.md
@@ -73,6 +74,10 @@ nav:
     - FAQ: wiki/faq.md
   - Development Notes:
     - README: development/README.md
+    - HAL Rebuild Plan: development/HAL_REBUILD_PLAN.md
+    - Research Programs: development/research-programs.md
+    - Shared Store Services: development/shared-store.md
+    - Migrations and Object Storage: development/migrations-and-storage.md
     - Refactor Plan: development/REFACTOR_PLAN.md
     - Test Results: development/TEST_RESULTS.md
     - Test Summary: development/TEST_SUMMARY.md

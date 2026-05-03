@@ -18,6 +18,8 @@ from hal9000.acquisition.search import SearchEngine
 from hal9000.acquisition.validator import PDFValidator
 
 if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
     from hal9000.config import Settings
     from hal9000.db.models import Document
     from hal9000.ingest import PDFProcessor
@@ -99,7 +101,7 @@ class AcquisitionOrchestrator:
     def __init__(
         self,
         settings: "Settings",
-        db_session=None,
+        db_session: Optional["Session"] = None,
         pdf_processor: Optional["PDFProcessor"] = None,
         rlm_processor: Optional["RLMProcessor"] = None,
         vault_manager: Optional["VaultManager"] = None,

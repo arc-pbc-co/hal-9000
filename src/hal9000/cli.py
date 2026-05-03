@@ -752,6 +752,533 @@ def gateway_start(ctx: click.Context, host: str, port: int, verbose: bool) -> No
     console.print("[green]Gateway server stopped.[/green]")
 
 
+@cli.group()
+@click.pass_context
+def research(ctx: click.Context) -> None:
+    """Research program commands."""
+    pass
+
+
+@research.command("init-program")
+@click.argument("path", type=click.Path(path_type=Path))
+@click.option("--name", default="HAL Research Program", help="Program name")
+@click.option(
+    "--objective",
+    default="Run a bounded, source-backed research review.",
+    help="Program objective",
+)
+@click.option("--owner", help="Program owner")
+@click.option("--domain", default="materials_science", help="Research domain")
+def research_init_program(
+    path: Path,
+    name: str,
+    objective: str,
+    owner: Optional[str],
+    domain: str,
+) -> None:
+    """Create a starter autoresearch-style program.md file."""
+    from hal9000.research import render_program_template
+
+    if path.exists():
+        raise click.ClickException(f"Refusing to overwrite existing file: {path}")
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        render_program_template(
+            name=name,
+            objective=objective,
+            owner=owner,
+            domain=domain,
+        )
+    )
+    console.print(f"[green]Research program created:[/green] {path}")
+
+
+@research.command("validate-program")
+@click.argument("path", type=click.Path(exists=True, path_type=Path))
+def research_validate_program(path: Path) -> None:
+    """Validate a research program Markdown file."""
+    from pydantic import ValidationError
+
+    from hal9000.research import ProgramParseError, load_program
+
+    try:
+        program = load_program(path)
+    except (ProgramParseError, ValidationError) as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    table = Table(title="Research Program")
+    table.add_column("Field", style="cyan")
+    table.add_column("Value", style="green")
+    table.add_row("Name", program.spec.name)
+    table.add_row("Objective", program.spec.objective)
+    table.add_row("Domain", program.spec.domain)
+    table.add_row("Max Runtime", f"{program.spec.budget.max_runtime_minutes} minutes")
+    table.add_row("Max Papers", str(program.spec.budget.max_papers))
+    table.add_row("Outputs", ", ".join(program.spec.output_contract.required_outputs))
+    console.print(table)
+    console.print("[green]Research program is valid.[/green]")
+
+
+@research.command("create-project")
+@click.argument("slug")
+@click.option("--name", help="Project display name")
+@click.option("--owner", help="Project owner")
+@click.option("--description", help="Project description")
+@click.option("--visibility", default="firm", help="Project visibility")
+@click.pass_context
+def research_create_project(
+    ctx: click.Context,
+    slug: str,
+    name: Optional[str],
+    owner: Optional[str],
+    description: Optional[str],
+    visibility: str,
+) -> None:
+    """Create a shared research project."""
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        if store.get_project_by_slug(slug):
+            raise click.ClickException(f"Research project already exists: {slug}")
+
+        project = store.create_project(
+            name=name or slug.replace("-", " ").title(),
+            slug=slug,
+            owner=owner,
+            description=description,
+            visibility=visibility,
+        )
+        session.commit()
+        console.print(f"[green]Research project created:[/green] {project.slug}")
+        console.print(f"  id: {project.id}")
+    finally:
+        session.close()
+
+
+@research.command("save-program")
+@click.argument("path", type=click.Path(exists=True, path_type=Path))
+@click.option("--project-slug", help="Attach the program to a research project")
+@click.pass_context
+def research_save_program(
+    ctx: click.Context,
+    path: Path,
+    project_slug: Optional[str],
+) -> None:
+    """Persist a validated research program into the shared store."""
+    from pydantic import ValidationError
+
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research import ProgramParseError, load_program
+
+    try:
+        program = load_program(path)
+    except (ProgramParseError, ValidationError) as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        project = None
+        if project_slug:
+            project = store.get_project_by_slug(project_slug)
+            if project is None:
+                raise click.ClickException(f"Research project not found: {project_slug}")
+
+        record = store.save_program(program, project=project)
+        session.commit()
+        console.print(f"[green]Research program saved:[/green] {record.name}")
+        console.print(f"  id: {record.id}")
+        if project:
+            console.print(f"  project: {project.slug}")
+    finally:
+        session.close()
+
+
+@research.command("queue-run")
+@click.option("--objective", help="Run objective; defaults to the program objective when provided")
+@click.option("--project-slug", help="Attach the run to a research project")
+@click.option("--program-id", help="Attach the run to a saved research program")
+@click.option("--initiated-by", help="User or agent queuing the run")
+@click.pass_context
+def research_queue_run(
+    ctx: click.Context,
+    objective: Optional[str],
+    project_slug: Optional[str],
+    program_id: Optional[str],
+    initiated_by: Optional[str],
+) -> None:
+    """Queue a bounded research run record."""
+    import json
+
+    from hal9000.db.models import ResearchProgramRecord, init_db
+    from hal9000.db.store import ResearchStore
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+
+        project = None
+        if project_slug:
+            project = store.get_project_by_slug(project_slug)
+            if project is None:
+                raise click.ClickException(f"Research project not found: {project_slug}")
+
+        program = None
+        if program_id:
+            program = session.get(ResearchProgramRecord, program_id)
+            if program is None:
+                raise click.ClickException(f"Research program not found: {program_id}")
+            if project is None:
+                project = program.project
+
+        run_objective = objective or (program.objective if program else None)
+        if not run_objective:
+            raise click.ClickException("Provide --objective or --program-id")
+
+        budget = None
+        tool_policy = None
+        if program:
+            spec = json.loads(program.spec_json)
+            budget = spec.get("budget")
+            tool_policy = {"allowed_tools": spec.get("allowed_tools", [])}
+
+        run = store.create_run(
+            objective=run_objective,
+            project=project,
+            program=program,
+            initiated_by=initiated_by,
+            budget=budget,
+            tool_policy=tool_policy,
+        )
+        store.append_run_event(
+            run,
+            event_type="run.queued",
+            message="Research run queued.",
+            actor=initiated_by,
+            payload={"program_id": program.id if program else None},
+        )
+        session.commit()
+        console.print("[green]Research run queued.[/green]")
+        console.print(f"  id: {run.id}")
+        console.print(f"  status: {run.status}")
+    finally:
+        session.close()
+
+
+@research.command("runs")
+@click.option("--status", help="Filter by run status")
+@click.option("--project-slug", help="Filter by research project")
+@click.option("--limit", default=20, type=int, help="Maximum runs to show")
+@click.pass_context
+def research_runs(
+    ctx: click.Context,
+    status: Optional[str],
+    project_slug: Optional[str],
+    limit: int,
+) -> None:
+    """List recent research runs."""
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        project = None
+        if project_slug:
+            project = store.get_project_by_slug(project_slug)
+            if project is None:
+                raise click.ClickException(f"Research project not found: {project_slug}")
+
+        runs = store.list_runs(status=status, project=project, limit=limit)
+        table = Table(title="Research Runs")
+        table.add_column("ID", style="cyan")
+        table.add_column("Status", style="green")
+        table.add_column("Project", style="blue")
+        table.add_column("Program", style="magenta")
+        table.add_column("Objective")
+
+        for run in runs:
+            table.add_row(
+                run.id[:8],
+                run.status,
+                run.project.slug if run.project else "-",
+                run.program.name if run.program else "-",
+                run.objective[:70],
+            )
+        console.print(table)
+    finally:
+        session.close()
+
+
+@research.command("run-log")
+@click.argument("run_id")
+@click.pass_context
+def research_run_log(ctx: click.Context, run_id: str) -> None:
+    """Show ordered events for a research run."""
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        run = store.get_run(run_id)
+        if run is None:
+            raise click.ClickException(f"Research run not found: {run_id}")
+
+        events = store.list_run_events(run)
+        table = Table(title=f"Run Log: {run.id}")
+        table.add_column("#", style="cyan", justify="right")
+        table.add_column("Type", style="green")
+        table.add_column("Actor", style="blue")
+        table.add_column("Message")
+
+        for event in events:
+            table.add_row(
+                str(event.sequence),
+                event.event_type,
+                event.actor or "-",
+                event.message or "",
+            )
+        console.print(table)
+    finally:
+        session.close()
+
+
+@research.command("search-chunks")
+@click.argument("query_text")
+@click.option("--project-slug", help="Limit search to chunks attached to runs in a project")
+@click.option("--run-id", help="Limit search to chunks attached to a run")
+@click.option("--limit", default=None, type=int, help="Maximum chunks to return")
+@click.pass_context
+def research_search_chunks(
+    ctx: click.Context,
+    query_text: str,
+    project_slug: Optional[str],
+    run_id: Optional[str],
+    limit: Optional[int],
+) -> None:
+    """Search embedded document chunks semantically."""
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.vector import VectorRepository, create_embedding_provider
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        project_id = None
+        if project_slug:
+            project = store.get_project_by_slug(project_slug)
+            if project is None:
+                raise click.ClickException(f"Research project not found: {project_slug}")
+            project_id = project.id
+
+        provider = create_embedding_provider(
+            settings.vector.embedding_provider,
+            dimension=settings.vector.embedding_dimension,
+            model=settings.vector.embedding_model,
+        )
+        repository = VectorRepository(session)
+        results = repository.search_chunks(
+            query_text=query_text,
+            provider=provider,
+            limit=limit or settings.vector.retrieval_limit,
+            project_id=project_id,
+            run_id=run_id,
+        )
+
+        table = Table(title="Semantic Chunk Search")
+        table.add_column("Score", style="green", justify="right")
+        table.add_column("Chunk", style="cyan")
+        table.add_column("Source", style="blue")
+        table.add_column("Content")
+
+        for result in results:
+            table.add_row(
+                f"{result.score:.3f}",
+                result.chunk_id[:8],
+                result.document_title or result.document_id[:8],
+                result.content[:120].replace("\n", " "),
+            )
+        console.print(table)
+        if not results:
+            console.print("[yellow]No embedded chunks matched the query.[/yellow]")
+    finally:
+        session.close()
+
+
+def _parse_payload_json(raw_payload: Optional[str]) -> Optional[dict]:
+    """Parse an optional JSON payload for research run CLI commands."""
+    if not raw_payload:
+        return None
+    import json
+
+    try:
+        payload = json.loads(raw_payload)
+    except json.JSONDecodeError as exc:
+        raise click.BadParameter(f"Invalid JSON payload: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise click.BadParameter("Payload JSON must be an object")
+    return payload
+
+
+@research.command("log-run-event")
+@click.argument("run_id")
+@click.option("--event-type", required=True, help="Event type, e.g. tool.search")
+@click.option("--message", help="Human-readable event message")
+@click.option("--actor", help="User, worker, or agent responsible for the event")
+@click.option("--payload-json", help="Optional JSON object payload")
+@click.pass_context
+def research_log_run_event(
+    ctx: click.Context,
+    run_id: str,
+    event_type: str,
+    message: Optional[str],
+    actor: Optional[str],
+    payload_json: Optional[str],
+) -> None:
+    """Append an event to a research run log."""
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        run = store.get_run(run_id)
+        if run is None:
+            raise click.ClickException(f"Research run not found: {run_id}")
+
+        event = store.append_run_event(
+            run,
+            event_type=event_type,
+            message=message,
+            actor=actor,
+            payload=_parse_payload_json(payload_json),
+        )
+        session.commit()
+        console.print(f"[green]Run event appended:[/green] {event.event_type} #{event.sequence}")
+    finally:
+        session.close()
+
+
+@research.command("update-run")
+@click.argument("run_id")
+@click.option(
+    "--status",
+    required=True,
+    type=click.Choice(["queued", "running", "staged", "completed", "failed", "promoted", "rejected"]),
+    help="New run status",
+)
+@click.option("--message", help="Human-readable lifecycle message")
+@click.option("--actor", help="User, worker, or agent responsible for the update")
+@click.option("--payload-json", help="Optional JSON object payload")
+@click.pass_context
+def research_update_run(
+    ctx: click.Context,
+    run_id: str,
+    status: str,
+    message: Optional[str],
+    actor: Optional[str],
+    payload_json: Optional[str],
+) -> None:
+    """Advance a research run lifecycle state."""
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        run = store.get_run(run_id)
+        if run is None:
+            raise click.ClickException(f"Research run not found: {run_id}")
+
+        event = store.update_run_status(
+            run,
+            status=status,
+            message=message,
+            actor=actor,
+            payload=_parse_payload_json(payload_json),
+        )
+        session.commit()
+        console.print(f"[green]Research run updated:[/green] {run.id}")
+        console.print(f"  status: {run.status}")
+        console.print(f"  event: {event.event_type} #{event.sequence}")
+    finally:
+        session.close()
+
+
+@research.command("execute-run")
+@click.argument("run_id")
+@click.option("--actor", default="hal-worker", help="Worker or agent name")
+@click.pass_context
+def research_execute_run(ctx: click.Context, run_id: str, actor: str) -> None:
+    """Execute a queued research run through the bounded worker."""
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research import BoundedResearchWorker
+    from hal9000.vector import create_embedding_provider
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        retrieval_provider = create_embedding_provider(
+            settings.vector.embedding_provider,
+            dimension=settings.vector.embedding_dimension,
+            model=settings.vector.embedding_model,
+        )
+        worker = BoundedResearchWorker(
+            store,
+            actor=actor,
+            retrieval_provider=retrieval_provider,
+            retrieval_limit=settings.vector.retrieval_limit,
+        )
+        result = worker.execute_run(run_id)
+        session.commit()
+        console.print("[green]Research run executed.[/green]")
+        console.print(f"  id: {result.run.id}")
+        console.print(f"  status: {result.run.status}")
+        console.print(f"  outputs: {len(result.output_ids)}")
+        console.print(f"  retrieved_context: {len(result.retrieval_context)}")
+        if result.run_report_id:
+            console.print(f"  run_report: {result.run_report_id}")
+    except Exception as exc:
+        session.commit()
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        session.close()
+
+
 def main() -> None:
     """Main entry point."""
     cli(obj={})

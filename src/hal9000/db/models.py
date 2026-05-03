@@ -15,6 +15,7 @@ from sqlalchemy import (
     String,
     Table,
     Text,
+    UniqueConstraint,
     create_engine,
 )
 from sqlalchemy.engine import make_url
@@ -147,6 +148,356 @@ class Topic(Base):
 
     def __repr__(self) -> str:
         return f"<Topic(id={self.id}, name={self.name})>"
+
+
+class ResearchProject(Base):
+    """A shared research workspace for teams, programs, runs, and outputs."""
+
+    __tablename__ = "research_projects"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+
+    name: Mapped[str] = mapped_column(String(256), nullable=False)
+    slug: Mapped[str] = mapped_column(String(256), unique=True, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    owner: Mapped[Optional[str]] = mapped_column(String(256))
+    visibility: Mapped[str] = mapped_column(String(50), default="firm")
+    status: Mapped[str] = mapped_column(String(50), default="active")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now
+    )
+
+    programs: Mapped[list["ResearchProgramRecord"]] = relationship(
+        "ResearchProgramRecord", back_populates="project"
+    )
+    runs: Mapped[list["ResearchRun"]] = relationship(
+        "ResearchRun", back_populates="project"
+    )
+    outputs: Mapped[list["ResearchOutput"]] = relationship(
+        "ResearchOutput", back_populates="project"
+    )
+
+    def __repr__(self) -> str:
+        return f"<ResearchProject(id={self.id}, slug={self.slug})>"
+
+
+class ResearchProgramRecord(Base):
+    """A persisted autoresearch-style research program."""
+
+    __tablename__ = "research_programs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    project_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("research_projects.id")
+    )
+
+    name: Mapped[str] = mapped_column(String(256), nullable=False)
+    version: Mapped[str] = mapped_column(String(50), default="0.1")
+    objective: Mapped[str] = mapped_column(Text, nullable=False)
+    owner: Mapped[Optional[str]] = mapped_column(String(256))
+    domain: Mapped[str] = mapped_column(String(256), default="materials_science")
+    tags: Mapped[Optional[str]] = mapped_column(Text)  # JSON list
+    spec_json: Mapped[str] = mapped_column(Text, nullable=False)
+    instructions: Mapped[str] = mapped_column(Text, nullable=False)
+    source_path: Mapped[Optional[str]] = mapped_column(String(1024))
+    status: Mapped[str] = mapped_column(String(50), default="active")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now
+    )
+
+    project: Mapped[Optional["ResearchProject"]] = relationship(
+        "ResearchProject", back_populates="programs"
+    )
+    runs: Mapped[list["ResearchRun"]] = relationship(
+        "ResearchRun", back_populates="program"
+    )
+
+    def __repr__(self) -> str:
+        return f"<ResearchProgramRecord(id={self.id}, name={self.name})>"
+
+
+class ResearchRun(Base):
+    """A bounded execution of a research program."""
+
+    __tablename__ = "research_runs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    project_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("research_projects.id")
+    )
+    program_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("research_programs.id")
+    )
+
+    status: Mapped[str] = mapped_column(String(50), default="queued")
+    objective: Mapped[str] = mapped_column(Text, nullable=False)
+    initiated_by: Mapped[Optional[str]] = mapped_column(String(256))
+    budget_json: Mapped[Optional[str]] = mapped_column(Text)
+    tool_policy_json: Mapped[Optional[str]] = mapped_column(Text)
+    run_log_path: Mapped[Optional[str]] = mapped_column(String(1024))
+    error_message: Mapped[Optional[str]] = mapped_column(Text)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now
+    )
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+    project: Mapped[Optional["ResearchProject"]] = relationship(
+        "ResearchProject", back_populates="runs"
+    )
+    program: Mapped[Optional["ResearchProgramRecord"]] = relationship(
+        "ResearchProgramRecord", back_populates="runs"
+    )
+    chunks: Mapped[list["DocumentChunk"]] = relationship(
+        "DocumentChunk", back_populates="run"
+    )
+    claims: Mapped[list["ExtractedClaim"]] = relationship(
+        "ExtractedClaim", back_populates="run"
+    )
+    outputs: Mapped[list["ResearchOutput"]] = relationship(
+        "ResearchOutput", back_populates="run"
+    )
+    events: Mapped[list["ResearchRunEvent"]] = relationship(
+        "ResearchRunEvent",
+        back_populates="run",
+        order_by="ResearchRunEvent.sequence",
+    )
+
+    def __repr__(self) -> str:
+        return f"<ResearchRun(id={self.id}, status={self.status})>"
+
+
+class ResearchRunEvent(Base):
+    """Append-only event log entry for a research run."""
+
+    __tablename__ = "research_run_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    run_id: Mapped[str] = mapped_column(String(36), ForeignKey("research_runs.id"), nullable=False)
+
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    event_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    message: Mapped[Optional[str]] = mapped_column(Text)
+    actor: Mapped[Optional[str]] = mapped_column(String(256))
+    payload_json: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+    run: Mapped["ResearchRun"] = relationship(
+        "ResearchRun", back_populates="events"
+    )
+
+    def __repr__(self) -> str:
+        return f"<ResearchRunEvent(id={self.id}, run_id={self.run_id}, sequence={self.sequence})>"
+
+
+class DocumentChunk(Base):
+    """A canonical chunk of a document used for retrieval and extraction."""
+
+    __tablename__ = "document_chunks"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    document_id: Mapped[str] = mapped_column(String(36), ForeignKey("documents.id"), nullable=False)
+    run_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("research_runs.id"))
+
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    text_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    char_start: Mapped[Optional[int]] = mapped_column(Integer)
+    char_end: Mapped[Optional[int]] = mapped_column(Integer)
+    token_count: Mapped[Optional[int]] = mapped_column(Integer)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding_ref: Mapped[Optional[str]] = mapped_column(String(1024))
+    extraction_metadata: Mapped[Optional[str]] = mapped_column(Text)  # JSON
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+    document: Mapped["Document"] = relationship("Document", backref="chunks")
+    run: Mapped[Optional["ResearchRun"]] = relationship(
+        "ResearchRun", back_populates="chunks"
+    )
+    claims: Mapped[list["ExtractedClaim"]] = relationship(
+        "ExtractedClaim", back_populates="chunk"
+    )
+    embeddings: Mapped[list["ChunkEmbedding"]] = relationship(
+        "ChunkEmbedding",
+        back_populates="chunk",
+    )
+
+    def __repr__(self) -> str:
+        return f"<DocumentChunk(id={self.id}, document_id={self.document_id}, index={self.chunk_index})>"
+
+
+class ChunkEmbedding(Base):
+    """Embedding metadata and portable vector payload for a document chunk."""
+
+    __tablename__ = "chunk_embeddings"
+    __table_args__ = (
+        UniqueConstraint(
+            "chunk_id",
+            "embedding_provider",
+            "embedding_model",
+            name="uq_chunk_embeddings_chunk_provider_model",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    chunk_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("document_chunks.id"), nullable=False
+    )
+
+    embedding_provider: Mapped[str] = mapped_column(String(100), nullable=False)
+    embedding_model: Mapped[str] = mapped_column(String(256), nullable=False)
+    embedding_dim: Mapped[int] = mapped_column(Integer, nullable=False)
+    embedding_json: Mapped[str] = mapped_column(Text, nullable=False)
+    vector_uri: Mapped[Optional[str]] = mapped_column(String(1024))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now
+    )
+
+    chunk: Mapped["DocumentChunk"] = relationship("DocumentChunk", back_populates="embeddings")
+
+    def __repr__(self) -> str:
+        return (
+            "<ChunkEmbedding("
+            f"id={self.id}, chunk_id={self.chunk_id}, provider={self.embedding_provider}, "
+            f"model={self.embedding_model}, dim={self.embedding_dim}"
+            ")>"
+        )
+
+
+class ExtractedClaim(Base):
+    """A source-backed claim extracted from a document or research run."""
+
+    __tablename__ = "extracted_claims"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    document_id: Mapped[str] = mapped_column(String(36), ForeignKey("documents.id"), nullable=False)
+    chunk_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("document_chunks.id"))
+    run_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("research_runs.id"))
+
+    claim_text: Mapped[str] = mapped_column(Text, nullable=False)
+    claim_type: Mapped[str] = mapped_column(String(100), default="finding")
+    confidence: Mapped[float] = mapped_column(Float, default=0.5)
+    evidence_text: Mapped[Optional[str]] = mapped_column(Text)
+    normalized_subject: Mapped[Optional[str]] = mapped_column(String(512))
+    normalized_predicate: Mapped[Optional[str]] = mapped_column(String(256))
+    normalized_object: Mapped[Optional[str]] = mapped_column(String(512))
+    provenance_json: Mapped[Optional[str]] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(50), default="staged")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now
+    )
+
+    document: Mapped["Document"] = relationship("Document", backref="claims")
+    chunk: Mapped[Optional["DocumentChunk"]] = relationship(
+        "DocumentChunk", back_populates="claims"
+    )
+    run: Mapped[Optional["ResearchRun"]] = relationship(
+        "ResearchRun", back_populates="claims"
+    )
+    evidence_links: Mapped[list["EvidenceLink"]] = relationship(
+        "EvidenceLink", back_populates="claim"
+    )
+
+    def __repr__(self) -> str:
+        return f"<ExtractedClaim(id={self.id}, type={self.claim_type}, status={self.status})>"
+
+
+class EvidenceLink(Base):
+    """A precise evidence pointer supporting an extracted claim."""
+
+    __tablename__ = "evidence_links"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    claim_id: Mapped[str] = mapped_column(String(36), ForeignKey("extracted_claims.id"), nullable=False)
+    document_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("documents.id"))
+    chunk_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("document_chunks.id"))
+
+    source_url: Mapped[Optional[str]] = mapped_column(String(1024))
+    quote: Mapped[Optional[str]] = mapped_column(Text)
+    locator: Mapped[Optional[str]] = mapped_column(String(256))
+    evidence_type: Mapped[str] = mapped_column(String(100), default="source_excerpt")
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+    claim: Mapped["ExtractedClaim"] = relationship(
+        "ExtractedClaim", back_populates="evidence_links"
+    )
+    document: Mapped[Optional["Document"]] = relationship("Document", backref="evidence_links")
+    chunk: Mapped[Optional["DocumentChunk"]] = relationship("DocumentChunk", backref="evidence_links")
+
+    def __repr__(self) -> str:
+        return f"<EvidenceLink(id={self.id}, claim_id={self.claim_id})>"
+
+
+class ResearchOutput(Base):
+    """A generated research artifact staged for review or promotion."""
+
+    __tablename__ = "research_outputs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    project_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("research_projects.id")
+    )
+    run_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("research_runs.id"))
+
+    output_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    status: Mapped[str] = mapped_column(String(50), default="staged")
+    format: Mapped[str] = mapped_column(String(50), default="markdown")
+    content: Mapped[Optional[str]] = mapped_column(Text)
+    artifact_uri: Mapped[Optional[str]] = mapped_column(String(1024))
+    source_json: Mapped[Optional[str]] = mapped_column(Text)
+    created_by: Mapped[Optional[str]] = mapped_column(String(256))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now
+    )
+
+    project: Mapped[Optional["ResearchProject"]] = relationship(
+        "ResearchProject", back_populates="outputs"
+    )
+    run: Mapped[Optional["ResearchRun"]] = relationship(
+        "ResearchRun", back_populates="outputs"
+    )
+    review_decisions: Mapped[list["ReviewDecision"]] = relationship(
+        "ReviewDecision", back_populates="output"
+    )
+
+    def __repr__(self) -> str:
+        return f"<ResearchOutput(id={self.id}, type={self.output_type}, status={self.status})>"
+
+
+class ReviewDecision(Base):
+    """A human or policy decision on a staged research output."""
+
+    __tablename__ = "review_decisions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    output_id: Mapped[str] = mapped_column(String(36), ForeignKey("research_outputs.id"), nullable=False)
+
+    decision: Mapped[str] = mapped_column(String(50), nullable=False)
+    reviewer: Mapped[Optional[str]] = mapped_column(String(256))
+    rationale: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+    output: Mapped["ResearchOutput"] = relationship(
+        "ResearchOutput", back_populates="review_decisions"
+    )
+
+    def __repr__(self) -> str:
+        return f"<ReviewDecision(id={self.id}, decision={self.decision})>"
 
 
 class ProcessingJob(Base):
