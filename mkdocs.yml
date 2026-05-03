@@ -46,6 +46,7 @@ nav:
   - Home: index.md
   - Quick Start: guides/quick-start.md
   - Firm-Wide Research OS: guides/firm-wide-research-os.md
+  - Technical Briefing: briefings/hal-9000-technical-briefing.md
   - Guides:
     - Getting Started: guides/getting-started.md
     - Configuration: guides/configuration.md
