@@ -186,6 +186,14 @@ class BoundedResearchWorker:
             actor=self.actor,
             payload={"tool_call_id": tool_call.id, **result.to_dict()},
         )
+        for paper_event in result.paper_events:
+            self.store.append_run_event(
+                run,
+                event_type=f"acquisition.paper.{paper_event.get('status', 'unknown')}",
+                message=_paper_event_message(paper_event),
+                actor=self.actor,
+                payload=paper_event,
+            )
         return result
 
     def _require_runtime_budget(self, run: ResearchRun, phase: str) -> None:
@@ -297,3 +305,14 @@ class BoundedResearchWorker:
             },
         )
         return context
+
+
+def _paper_event_message(paper_event: dict[str, object]) -> str:
+    """Render a concise per-paper acquisition event message."""
+    title = str(paper_event.get("title") or "Untitled paper")
+    status = str(paper_event.get("status") or "unknown")
+    stage = str(paper_event.get("stage") or "acquisition")
+    reason = paper_event.get("reason")
+    if reason:
+        return f"{title[:80]}: {stage} {status} ({reason})"
+    return f"{title[:80]}: {stage} {status}"

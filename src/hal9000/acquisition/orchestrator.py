@@ -55,6 +55,7 @@ class AcquisitionResult:
     download_results: list[DownloadResult] = field(default_factory=list)
     documents: list["Document"] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    paper_events: list[dict] = field(default_factory=list)
 
     # Timing
     started_at: datetime = field(default_factory=utc_now)
@@ -73,6 +74,7 @@ class AcquisitionResult:
             "download_failures": self.download_failures,
             "processing_failures": self.processing_failures,
             "errors": self.errors,
+            "paper_events": self.paper_events,
             "started_at": self.started_at.isoformat(),
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
         }
@@ -360,6 +362,10 @@ class AcquisitionOrchestrator:
 
             result.papers_found = len(search_results)
             result.search_results = search_results
+            for search_result in search_results:
+                result.paper_events.append(
+                    _paper_event(search_result, status="found", stage="search")
+                )
             logger.info(f"Found {result.papers_found} relevant papers")
             update_progress("Searching", 1, 1)
 
@@ -375,6 +381,16 @@ class AcquisitionOrchestrator:
 
             # Filter to papers with PDF URLs
             downloadable = [r for r in search_results if r.pdf_url]
+            for search_result in search_results:
+                if not search_result.pdf_url:
+                    result.paper_events.append(
+                        _paper_event(
+                            search_result,
+                            status="skipped",
+                            stage="resolve",
+                            reason="no_pdf_url",
+                        )
+                    )
             logger.info(f"{len(downloadable)} papers have downloadable PDFs")
             update_progress("Resolving URLs", 1, 1)
 
@@ -389,6 +405,14 @@ class AcquisitionOrchestrator:
                     if existing:
                         logger.info(f"Skipping duplicate: {search_result.title[:50]}")
                         result.duplicates_skipped += 1
+                        result.paper_events.append(
+                            _paper_event(
+                                search_result,
+                                status="skipped",
+                                stage="dedupe",
+                                reason="duplicate_doi",
+                            )
+                        )
                         continue
 
                 download_result = await self.download_manager.download(
@@ -427,6 +451,14 @@ class AcquisitionOrchestrator:
 
                 if download_result.success:
                     result.papers_downloaded += 1
+                    result.paper_events.append(
+                        _paper_event(
+                            search_result,
+                            status="downloaded",
+                            stage="download",
+                            download_result=download_result,
+                        )
+                    )
 
                     # Check hash-based duplicate
                     if download_result.file_hash:
@@ -435,11 +467,29 @@ class AcquisitionOrchestrator:
                         )
                         if existing:
                             result.duplicates_skipped += 1
+                            result.paper_events.append(
+                                _paper_event(
+                                    search_result,
+                                    status="skipped",
+                                    stage="dedupe",
+                                    reason="duplicate_hash",
+                                    download_result=download_result,
+                                )
+                            )
                             # Remove the duplicate file
                             if download_result.local_path:
                                 download_result.local_path.unlink(missing_ok=True)
                 else:
                     result.download_failures += 1
+                    result.paper_events.append(
+                        _paper_event(
+                            search_result,
+                            status="failed",
+                            stage="download",
+                            reason=download_result.error,
+                            download_result=download_result,
+                        )
+                    )
                     if download_result.error:
                         result.errors.append(
                             f"Download failed for '{search_result.title[:50]}': "
@@ -467,8 +517,26 @@ class AcquisitionOrchestrator:
                     if document:
                         result.papers_processed += 1
                         result.documents.append(document)
+                        result.paper_events.append(
+                            _paper_event(
+                                search_result,
+                                status="processed",
+                                stage="process",
+                                download_result=download_result,
+                                document=document,
+                            )
+                        )
                     else:
                         result.processing_failures += 1
+                        result.paper_events.append(
+                            _paper_event(
+                                search_result,
+                                status="failed",
+                                stage="process",
+                                reason="processing_failed",
+                                download_result=download_result,
+                            )
+                        )
 
                     update_progress("Processing", i + 1, len(successful_downloads))
 
@@ -484,6 +552,8 @@ class AcquisitionOrchestrator:
             )
 
         except Exception as e:
+            if getattr(e, "is_budget_exceeded", False):
+                raise
             logger.error(f"Acquisition failed: {e}")
             result.errors.append(f"Acquisition failed: {str(e)}")
             result.completed_at = utc_now()
@@ -524,3 +594,32 @@ class AcquisitionOrchestrator:
         downloadable = [r for r in results if r.pdf_url]
 
         return downloadable
+
+
+def _paper_event(
+    search_result: SearchResult,
+    status: str,
+    stage: str,
+    reason: Optional[str] = None,
+    download_result: Optional[DownloadResult] = None,
+    document: Optional["Document"] = None,
+) -> dict:
+    """Build a JSON-safe per-paper acquisition telemetry event."""
+    payload = {
+        "status": status,
+        "stage": stage,
+        "title": search_result.title,
+        "identifier": search_result.identifier,
+        "source": search_result.source,
+        "doi": search_result.doi,
+        "arxiv_id": search_result.arxiv_id,
+        "pdf_url": search_result.pdf_url,
+        "relevance_score": search_result.relevance_score,
+    }
+    if reason:
+        payload["reason"] = reason
+    if download_result:
+        payload["download"] = download_result.to_dict()
+    if document:
+        payload["document_id"] = document.id
+    return payload

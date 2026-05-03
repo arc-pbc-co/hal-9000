@@ -154,7 +154,8 @@ context, and reviewable outputs in one bounded worker run.
 Live acquisition can now be invoked from bounded worker execution with explicit
 budget and tool-policy checks. Acquisition runs are recorded as durable tool-call
 records so searches, downloads, processing progress, and RLM LLM-call reservations
-are inspectable alongside run events.
+are inspectable alongside run events. Each paper also receives outcome telemetry
+for found, downloaded, processed, skipped, and failed states.
 
 ## Engineering Principles
 

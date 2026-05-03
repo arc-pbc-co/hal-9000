@@ -38,10 +38,11 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add runtime budget checks around major worker phases.
 - [x] Add LLM-call budget enforcement and `llm.call` tool-call records during RLM processing.
 - [x] Add acquisition progress telemetry events during live worker acquisition.
+- [x] Add per-paper acquisition telemetry for searched, downloaded, processed, skipped, and failed papers.
 
 ### In Progress
 
-- [ ] Add richer acquisition processing telemetry for per-document outcomes and failures.
+- [ ] Add reviewer-facing run telemetry views and summaries.
 
 ### Remaining
 
@@ -98,7 +99,8 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add tool-call records and first-pass cost accounting fields.
 - [x] Connect live acquisition/search/download execution into the worker.
 - [x] Add budget enforcement for runtime and LLM calls.
-- [ ] Add richer acquisition processing telemetry for per-document outcomes and failures.
+- [x] Add richer acquisition processing telemetry for per-document outcomes and failures.
+- [ ] Add reviewer-facing run telemetry views and summaries.
 - [ ] Add retry, cancellation, and timeout handling.
 - [ ] Add scheduled or queued worker process.
 
@@ -205,6 +207,7 @@ Implemented in this slice:
 - `BoundedResearchWorker` can run live acquisition through `hal research execute-run --live-acquisition`, constrained by run budget and tool policy.
 - Runtime budget is checked before major worker phases, and RLM model calls emit `llm.call` tool-call records before provider execution.
 - Live acquisition emits `acquisition.progress` run events for search, download, and processing stages.
+- Acquisition results now include a per-paper event ledger, and workers mirror those into `acquisition.paper.*` run events.
 
 ## Milestone 3: Research Run Orchestrator
 
@@ -257,4 +260,4 @@ Deliverables:
 ## Immediate Next Tasks
 
 - Add environment profiles for local, staging, and production.
-- Add per-document acquisition processing telemetry and failure accounting.
+- Add reviewer-facing run telemetry views and summaries.

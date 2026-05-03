@@ -23,6 +23,7 @@ class WorkerAcquisitionResult:
     document_ids: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     progress_events: list[dict[str, object]] = field(default_factory=list)
+    paper_events: list[dict[str, object]] = field(default_factory=list)
     llm_calls: int = 0
 
     def to_dict(self) -> dict[str, object]:
@@ -37,6 +38,7 @@ class WorkerAcquisitionResult:
             "document_ids": self.document_ids,
             "errors": self.errors,
             "progress_events": self.progress_events,
+            "paper_events": self.paper_events,
             "llm_calls": self.llm_calls,
         }
 
@@ -115,5 +117,6 @@ class LiveAcquisitionRunner:
             document_ids=[document.id for document in result.documents],
             errors=result.errors,
             progress_events=progress_events,
+            paper_events=result.paper_events,
             llm_calls=getattr(orchestrator.rlm_processor, "llm_calls_made", 0),
         )

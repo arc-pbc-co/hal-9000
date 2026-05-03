@@ -23,6 +23,15 @@ class FakeAcquisitionRunner:
             papers_downloaded=1,
             papers_processed=1,
             document_ids=["doc-1"],
+            paper_events=[
+                {
+                    "status": "processed",
+                    "stage": "process",
+                    "title": "Fake Paper",
+                    "identifier": "doi:10.1234/fake",
+                    "document_id": "doc-1",
+                }
+            ],
         )
         self.calls: list[tuple[str, int]] = []
 
@@ -285,8 +294,10 @@ def test_bounded_worker_runs_acquisition_with_tool_call_accounting(temp_director
         assert len(calls) == 1
         assert calls[0].tool_name == "acquisition.acquire"
         assert calls[0].status == "completed"
+        assert "paper_events" in calls[0].output_json
         assert "tool.acquisition.completed" in [event.event_type for event in run.events]
         assert "acquisition.progress" in [event.event_type for event in run.events]
+        assert "acquisition.paper.processed" in [event.event_type for event in run.events]
     finally:
         session.close()
 

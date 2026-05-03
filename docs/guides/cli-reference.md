@@ -47,7 +47,7 @@ retrieval context, and staged outputs when corpus records are available.
 within the run's paper/download budget and tool policy; each live acquisition
 call is recorded as a durable tool-call record. Runtime and RLM LLM-call budgets
 are enforced during worker execution, and live acquisition emits progress events
-into the run log.
+plus per-paper `acquisition.paper.*` outcomes into the run log.
 
 ### `hal acquire`
 
