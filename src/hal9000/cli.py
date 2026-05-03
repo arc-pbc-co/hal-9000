@@ -1441,11 +1441,13 @@ def _render_observability_summary(summary) -> None:
 
 @research.command("run-log")
 @click.argument("run_id")
+@click.option("--as-user", help="User email for permission enforcement")
 @click.pass_context
-def research_run_log(ctx: click.Context, run_id: str) -> None:
+def research_run_log(ctx: click.Context, run_id: str, as_user: Optional[str]) -> None:
     """Show ordered events for a research run."""
     from hal9000.db.models import init_db
     from hal9000.db.store import ResearchStore
+    from hal9000.research.authz import ResearchAuthorizer
 
     settings = _get_settings_from_context(ctx)
     _, session_local = init_db(settings.database.url)
@@ -1456,6 +1458,8 @@ def research_run_log(ctx: click.Context, run_id: str) -> None:
         run = store.get_run(run_id)
         if run is None:
             raise click.ClickException(f"Research run not found: {run_id}")
+        if as_user:
+            ResearchAuthorizer(store).require_run_role(run, as_user, "viewer")
 
         events = store.list_run_events(run)
         table = Table(title=f"Run Log: {run.id}")
@@ -1472,6 +1476,8 @@ def research_run_log(ctx: click.Context, run_id: str) -> None:
                 event.message or "",
             )
         console.print(table)
+    except Exception as exc:
+        raise click.ClickException(str(exc)) from exc
     finally:
         session.close()
 
@@ -1479,13 +1485,20 @@ def research_run_log(ctx: click.Context, run_id: str) -> None:
 @research.command("run-summary")
 @click.argument("run_id")
 @click.option("--json", "as_json", is_flag=True, help="Emit the summary as JSON")
+@click.option("--as-user", help="User email for permission enforcement")
 @click.pass_context
-def research_run_summary(ctx: click.Context, run_id: str, as_json: bool) -> None:
+def research_run_summary(
+    ctx: click.Context,
+    run_id: str,
+    as_json: bool,
+    as_user: Optional[str],
+) -> None:
     """Show reviewer-facing telemetry for a research run."""
     import json
 
     from hal9000.db.models import init_db
     from hal9000.db.store import ResearchStore
+    from hal9000.research.authz import ResearchAuthorizer
     from hal9000.research.telemetry import RunTelemetrySummarizer
 
     settings = _get_settings_from_context(ctx)
@@ -1497,13 +1510,17 @@ def research_run_summary(ctx: click.Context, run_id: str, as_json: bool) -> None
         run = store.get_run(run_id)
         if run is None:
             raise click.ClickException(f"Research run not found: {run_id}")
+        if as_user:
+            ResearchAuthorizer(store).require_run_role(run, as_user, "viewer")
 
         summary = RunTelemetrySummarizer(store).summarize(run)
         if as_json:
-            console.print(json.dumps(summary.to_dict(), indent=2, sort_keys=True))
+            click.echo(json.dumps(summary.to_dict(), indent=2, sort_keys=True))
             return
 
         _render_run_summary(summary)
+    except Exception as exc:
+        raise click.ClickException(str(exc)) from exc
     finally:
         session.close()
 
@@ -1643,6 +1660,131 @@ def _render_run_summary(summary) -> None:
         console.print(f"  - {note}")
 
 
+@research.command("review-queue")
+@click.option("--reviewer", required=True, help="Reviewer user email")
+@click.option("--project-slug", help="Limit to a research project")
+@click.option("--limit", default=20, type=int, help="Maximum staged runs to show")
+@click.option("--json", "as_json", is_flag=True, help="Emit the queue as JSON")
+@click.pass_context
+def research_review_queue(
+    ctx: click.Context,
+    reviewer: str,
+    project_slug: Optional[str],
+    limit: int,
+    as_json: bool,
+) -> None:
+    """List staged runs the reviewer is allowed to review."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.review import ResearchReviewService
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        project = None
+        if project_slug:
+            project = store.get_project_by_slug(project_slug)
+            if project is None:
+                raise click.ClickException(f"Research project not found: {project_slug}")
+
+        items = ResearchReviewService(store).list_review_queue(
+            reviewer_email=reviewer,
+            project=project,
+            limit=limit,
+        )
+        if as_json:
+            click.echo(json.dumps([item.__dict__ for item in items], indent=2, sort_keys=True))
+            return
+
+        table = Table(title="Review Queue")
+        table.add_column("Run", style="cyan")
+        table.add_column("Project", style="blue")
+        table.add_column("Program", style="magenta")
+        table.add_column("Outputs", style="green", justify="right")
+        table.add_column("Objective")
+        for item in items:
+            table.add_row(
+                item.run_id[:8],
+                item.project_slug or "-",
+                item.program_name or "-",
+                str(item.output_count),
+                item.objective[:80],
+            )
+        console.print(table)
+    except Exception as exc:
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        session.close()
+
+
+@research.command("review-detail")
+@click.argument("run_id")
+@click.option("--reviewer", required=True, help="Reviewer user email")
+@click.option("--json", "as_json", is_flag=True, help="Emit the detail as JSON")
+@click.pass_context
+def research_review_detail(
+    ctx: click.Context,
+    run_id: str,
+    reviewer: str,
+    as_json: bool,
+) -> None:
+    """Show authorized review detail for a staged run."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.review import ResearchReviewService
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        run = store.get_run(run_id)
+        if run is None:
+            raise click.ClickException(f"Research run not found: {run_id}")
+        detail = ResearchReviewService(store).get_review_detail(
+            run,
+            reviewer_email=reviewer,
+        )
+        if as_json:
+            click.echo(json.dumps(detail.to_dict(), indent=2, sort_keys=True))
+            return
+
+        table = Table(title=f"Review Detail: {detail.run_id}")
+        table.add_column("Field", style="cyan")
+        table.add_column("Value", style="green")
+        table.add_row("Status", detail.status)
+        table.add_row("Project", detail.project_slug or "-")
+        table.add_row("Outputs", str(len(detail.outputs)))
+        table.add_row("Objective", detail.objective)
+        console.print(table)
+
+        output_table = Table(title="Review Outputs")
+        output_table.add_column("Type", style="cyan")
+        output_table.add_column("Status", style="green")
+        output_table.add_column("Format", style="magenta")
+        output_table.add_column("Title")
+        for output in detail.outputs:
+            output_table.add_row(
+                output.output_type,
+                output.status,
+                output.format,
+                output.title,
+            )
+        console.print(output_table)
+    except Exception as exc:
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        session.close()
+
+
 @research.command("review-run")
 @click.argument("run_id")
 @click.option(
@@ -1651,7 +1793,7 @@ def _render_run_summary(summary) -> None:
     type=click.Choice(["promote", "reject", "request-changes"]),
     help="Reviewer decision for all staged outputs on the run",
 )
-@click.option("--reviewer", help="Reviewer name or email")
+@click.option("--reviewer", required=True, help="Reviewer user email")
 @click.option("--rationale", help="Review rationale or requested changes")
 @click.pass_context
 def research_review_run(
@@ -1664,6 +1806,7 @@ def research_review_run(
     """Promote, reject, or request changes for staged run outputs."""
     from hal9000.db.models import init_db
     from hal9000.db.store import ResearchStore
+    from hal9000.research.review import ResearchReviewService
 
     settings = _get_settings_from_context(ctx)
     _, session_local = init_db(settings.database.url)
@@ -1675,10 +1818,10 @@ def research_review_run(
         if run is None:
             raise click.ClickException(f"Research run not found: {run_id}")
 
-        result = store.review_run_outputs(
+        result = ResearchReviewService(store).review_run(
             run,
             decision=decision,
-            reviewer=reviewer,
+            reviewer_email=reviewer,
             rationale=rationale,
         )
         session.commit()
@@ -1736,6 +1879,7 @@ def _export_target_values(targets: tuple[str, ...]):
 )
 @click.option("--prefix", default="exports", help="Object-store key prefix for export artifacts")
 @click.option("--json", "as_json", is_flag=True, help="Print machine-readable JSON")
+@click.option("--as-user", help="User email for permission enforcement")
 @click.pass_context
 def research_export_run(
     ctx: click.Context,
@@ -1744,12 +1888,14 @@ def research_export_run(
     statuses: tuple[str, ...],
     prefix: str,
     as_json: bool,
+    as_user: Optional[str],
 ) -> None:
     """Export reviewed outputs from a run to firm-wide target formats."""
     import json
 
     from hal9000.db.models import init_db
     from hal9000.db.store import ResearchStore
+    from hal9000.research.authz import ResearchAuthorizer
     from hal9000.research.exports import ResearchOutputExporter
     from hal9000.storage import create_object_store_from_settings
 
@@ -1762,6 +1908,8 @@ def research_export_run(
         run = store.get_run(run_id)
         if run is None:
             raise click.ClickException(f"Research run not found: {run_id}")
+        if as_user:
+            ResearchAuthorizer(store).require_run_role(run, as_user, "viewer")
 
         exporter = ResearchOutputExporter(
             session=session,
@@ -1834,6 +1982,7 @@ def research_export_run(
 )
 @click.option("--prefix", default="exports", help="Object-store key prefix for export artifacts")
 @click.option("--json", "as_json", is_flag=True, help="Print machine-readable JSON")
+@click.option("--as-user", help="User email for permission enforcement")
 @click.pass_context
 def research_export_project(
     ctx: click.Context,
@@ -1842,12 +1991,14 @@ def research_export_project(
     statuses: tuple[str, ...],
     prefix: str,
     as_json: bool,
+    as_user: Optional[str],
 ) -> None:
     """Export reviewed outputs from a project to firm-wide target formats."""
     import json
 
     from hal9000.db.models import init_db
     from hal9000.db.store import ResearchStore
+    from hal9000.research.authz import ResearchAuthorizer
     from hal9000.research.exports import ResearchOutputExporter
     from hal9000.storage import create_object_store_from_settings
 
@@ -1860,6 +2011,8 @@ def research_export_project(
         project = store.get_project_by_slug(project_slug)
         if project is None:
             raise click.ClickException(f"Research project not found: {project_slug}")
+        if as_user:
+            ResearchAuthorizer(store).require_project_role(project, as_user, "viewer")
 
         exporter = ResearchOutputExporter(
             session=session,

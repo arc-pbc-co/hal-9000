@@ -317,6 +317,8 @@ def test_research_cli_project_program_and_run_flow(temp_directory: Path):
             "research",
             "run-summary",
             run_id,
+            "--as-user",
+            "researcher@example.com",
         ],
         obj={},
     )
@@ -334,6 +336,8 @@ def test_research_cli_project_program_and_run_flow(temp_directory: Path):
             "research",
             "run-summary",
             run_id,
+            "--as-user",
+            "researcher@example.com",
             "--json",
         ],
         obj={},
@@ -352,6 +356,42 @@ def test_research_cli_project_program_and_run_flow(temp_directory: Path):
     finally:
         session.close()
 
+    review_queue_result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(config_path),
+            "research",
+            "review-queue",
+            "--reviewer",
+            "researcher@example.com",
+            "--project-slug",
+            "cli-project",
+        ],
+        obj={},
+    )
+    assert review_queue_result.exit_code == 0, review_queue_result.output
+    assert "Review Queue" in review_queue_result.output
+    assert "CLI Program" in review_queue_result.output
+
+    review_detail_result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(config_path),
+            "research",
+            "review-detail",
+            run_id,
+            "--reviewer",
+            "researcher@example.com",
+            "--json",
+        ],
+        obj={},
+    )
+    assert review_detail_result.exit_code == 0, review_detail_result.output
+    assert '"run_id"' in review_detail_result.output
+    assert '"outputs"' in review_detail_result.output
+
     review_result = runner.invoke(
         cli,
         [
@@ -363,7 +403,7 @@ def test_research_cli_project_program_and_run_flow(temp_directory: Path):
             "--decision",
             "promote",
             "--reviewer",
-            "reviewer@example.com",
+            "researcher@example.com",
             "--rationale",
             "Ready for sharing.",
         ],

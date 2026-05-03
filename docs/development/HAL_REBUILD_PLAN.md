@@ -50,11 +50,11 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add firm-wide export targets for ADAM, Obsidian, Markdown, JSON, and dashboards.
 - [x] Add backup/restore plan for Postgres and object storage.
 - [x] Add foundational users, teams, memberships, and project permission grants.
+- [x] Add project permission enforcement for review service/API entry points.
 
 ### In Progress
 
-- [ ] Add API enforcement for project permissions.
-- [ ] Add review UI/API for staged outputs.
+- [ ] Add HTTP/gateway adapter for review UI workflows.
 
 ### Remaining
 
@@ -128,6 +128,7 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 
 - [x] Add staged outputs and review decisions in the data model.
 - [x] Add review workflow commands/API: promote, reject, request changes.
+- [x] Add authorized review queue/detail/decision service API.
 - [ ] Add comments and annotations on outputs and claims.
 - [ ] Add collections, saved searches, and shared project views.
 - [ ] Add notification hooks for review-ready runs.
@@ -137,7 +138,7 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 
 - [x] Add users, teams, roles, and permissions.
 - [ ] Add SSO/OIDC integration plan.
-- [ ] Add project visibility and access enforcement.
+- [x] Add project visibility and access enforcement for review workflows.
 - [ ] Add retention policy for PDFs, artifacts, and logs.
 - [ ] Add secrets management for providers and model APIs.
 - [ ] Add compliance review for copyrighted PDFs and generated summaries.
@@ -228,6 +229,7 @@ Implemented in this slice:
 - `ResearchOutputExporter` and `hal research export-run/export-project` now publish promoted outputs to ADAM, Obsidian, Markdown, JSON, and dashboard object-store artifacts.
 - `docs/guides/backup-restore.md` now defines the first Postgres and object-storage backup/restore runbook.
 - `UserAccount`, `Team`, `TeamMembership`, and `ProjectPermission` now provide the first durable governance model for project access.
+- `ResearchAuthorizer` and `ResearchReviewService` now enforce reviewer access for review queue, detail, and decision workflows.
 
 ## Milestone 3: Research Run Orchestrator
 

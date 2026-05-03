@@ -36,8 +36,10 @@ hal research runs --project-slug superalloys
 hal research observe
 hal research observe --json
 hal research run-log <run-id>
-hal research run-summary <run-id>
-hal research run-summary <run-id> --json
+hal research run-summary <run-id> --as-user reviewer@example.com
+hal research run-summary <run-id> --json --as-user reviewer@example.com
+hal research review-queue --reviewer reviewer@example.com
+hal research review-detail <run-id> --reviewer reviewer@example.com --json
 hal research review-run <run-id> --decision promote --reviewer reviewer@example.com
 hal research review-run <run-id> --decision reject --reviewer reviewer@example.com
 hal research review-run <run-id> --decision request-changes --reviewer reviewer@example.com
@@ -78,12 +80,17 @@ plus per-paper `acquisition.paper.*` outcomes into the run log.
 `run-summary` condenses the durable event log, tool calls, acquisition outcomes,
 budget usage, warnings, staged outputs, and reviewer notes into a compact review
 view. Use `--json` when feeding dashboards or a future review UI.
-`review-run` records a reviewer decision for every staged output on the run and
-advances the run to `promoted`, `rejected`, or `changes_requested`.
+`review-queue` lists staged runs the reviewer has permission to review, and
+`review-detail` returns the authorized detail payload intended for review UI
+adapters.
+`review-run` records a reviewer decision for every staged output on the run,
+requires reviewer project access, and advances the run to `promoted`,
+`rejected`, or `changes_requested`.
 `export-run` and `export-project` publish promoted outputs into object-store
 artifacts for ADAM, Obsidian, Markdown, JSON, and dashboard consumers. Use
 `--status staged` for pre-review handoffs and `--status all` for administrative
-exports.
+exports. Use `--as-user` on run logs, summaries, and exports when invoking those
+commands through shared API or UI adapters that need permission enforcement.
 `cancel-run` records cancellation requests; queued runs are cancelled immediately,
 while running runs move to `cancel_requested` until the worker observes the
 request. `work-queue` executes queued runs once, which makes it suitable for

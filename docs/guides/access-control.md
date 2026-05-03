@@ -64,6 +64,10 @@ hal research grant-project-access firm-research \
 
 ## Implementation Boundary
 
-This slice creates the durable governance substrate. API route enforcement,
-SSO/OIDC token mapping, review UI affordances, and audit dashboards should build
-on these tables rather than adding separate identity state.
+This slice creates the durable governance substrate. `ResearchAuthorizer` now
+provides reusable project-role checks, and the review workflow service enforces
+reviewer access before returning review detail or recording decisions.
+
+SSO/OIDC token mapping, HTTP route adapters, review UI affordances, and audit
+dashboards should build on these tables and services rather than adding separate
+identity state.

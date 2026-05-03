@@ -43,9 +43,15 @@ hal research runs --project-slug superalloys
 hal research observe
 hal research run-log <run-id>
 hal research run-summary <run-id>
+hal research review-queue \
+  --reviewer researcher@example.com \
+  --project-slug superalloys
+hal research review-detail <run-id> \
+  --reviewer researcher@example.com \
+  --json
 hal research review-run <run-id> \
   --decision request-changes \
-  --reviewer head-of-engineering@example.com \
+  --reviewer researcher@example.com \
   --rationale "Add stronger citation coverage."
 hal research export-run <run-id> --target markdown
 hal research export-project firm-research --target dashboard --json
@@ -125,6 +131,7 @@ session.commit()
   to `promoted`, `rejected`, or `changes_requested`.
 - Export promoted run and project outputs into ADAM, Obsidian, Markdown, JSON,
   and dashboard object-store artifacts.
+- Enforce project permissions for reviewer queue/detail/decision service calls.
 - Bootstrap baseline firm research projects and starter programs idempotently.
 - Summarize operations health across run status, queue depth, worker outcomes,
   tool-call costs/failures, recent failed runs, and recent run activity.
