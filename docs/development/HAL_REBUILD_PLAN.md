@@ -41,11 +41,13 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add per-paper acquisition telemetry for searched, downloaded, processed, skipped, and failed papers.
 - [x] Add reviewer-facing run telemetry summaries over events, tool calls, acquisition outcomes, budgets, warnings, and staged outputs.
 - [x] Add review workflow commands/API for promote, reject, and request changes.
+- [x] Add environment profiles for local, staging, and production.
+- [x] Add seed/bootstrap commands for firm projects and starter programs.
 
 ### In Progress
 
-- [ ] Add environment profiles for local, staging, and production.
 - [ ] Add retry, cancellation, and timeout handling.
+- [ ] Add scheduled or queued worker process.
 
 ### Remaining
 
@@ -65,8 +67,8 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add shared-store schema and repository service layer.
 - [x] Add Alembic migrations and migration documentation.
 - [x] Decide managed Postgres as the production system of record.
-- [ ] Add environment profiles for local, staging, and production.
-- [ ] Add seed/bootstrap commands for firm projects and starter programs.
+- [x] Add environment profiles for local, staging, and production.
+- [x] Add seed/bootstrap commands for firm projects and starter programs.
 
 ### Phase B: Shared Corpus and Provenance
 
@@ -213,6 +215,8 @@ Implemented in this slice:
 - Acquisition results now include a per-paper event ledger, and workers mirror those into `acquisition.paper.*` run events.
 - `RunTelemetrySummarizer` and `hal research run-summary` now provide a compact reviewer view over run events, tool calls, acquisition outcomes, budget usage, warnings, staged outputs, and reviewer notes.
 - `ResearchStore.review_run_outputs` and `hal research review-run` now record reviewer decisions across staged outputs and advance runs to `promoted`, `rejected`, or `changes_requested`.
+- `local`, `staging`, and `production` profiles now provide explicit operating defaults for database, object storage, vector retrieval, gateway binding, and readiness checks.
+- `hal research bootstrap` now creates or reuses the baseline firm research project and starter programs idempotently.
 
 ## Milestone 3: Research Run Orchestrator
 
@@ -266,5 +270,5 @@ Deliverables:
 
 ## Immediate Next Tasks
 
-- Add environment profiles for local, staging, and production.
 - Add retry, cancellation, and timeout handling.
+- Add scheduled or queued worker process.

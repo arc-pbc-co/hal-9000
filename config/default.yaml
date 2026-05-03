@@ -2,6 +2,8 @@
 # Copy to ~/.hal9000.yaml or set HAL9000_ environment variables to override
 
 hal9000:
+  environment: local
+
   # Document sources
   sources:
     local_paths:
@@ -46,6 +48,23 @@ hal9000:
   # Database
   database:
     url: sqlite:///./hal9000.db
+
+  # Object storage
+  storage:
+    backend: local
+    root_path: ./.hal9000_objects
+    bucket: null
+    prefix: ""
+    region: null
+    endpoint_url: null
+
+  # Vector search and embeddings
+  vector:
+    backend: pgvector
+    embedding_provider: fake
+    embedding_dimension: 1536
+    embedding_model: null
+    retrieval_limit: 5
 
   # Logging
   log_level: INFO

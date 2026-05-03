@@ -5,7 +5,13 @@ from pathlib import Path
 from click.testing import CliRunner
 
 from hal9000.cli import cli
-from hal9000.db.models import ResearchProgramRecord, ResearchRun, ResearchRunEvent, get_session
+from hal9000.db.models import (
+    ResearchProgramRecord,
+    ResearchProject,
+    ResearchRun,
+    ResearchRunEvent,
+    get_session,
+)
 from hal9000.research import render_program_template
 
 
@@ -268,5 +274,60 @@ def test_research_cli_project_program_and_run_flow(temp_directory: Path):
         assert run.status == "promoted"
         assert [output.status for output in run.outputs] == ["promoted"] * 4
         assert run.events[-1].event_type == "run.promoted"
+    finally:
+        session.close()
+
+
+def test_research_cli_bootstrap_is_idempotent(temp_directory: Path):
+    """Bootstrap should create a firm project and reuse starter programs."""
+    config_path, db_path = _write_config(temp_directory)
+    program_dir = Path(__file__).resolve().parents[1] / "templates" / "research" / "programs"
+    runner = CliRunner()
+
+    first_result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(config_path),
+            "research",
+            "bootstrap",
+            "--project-slug",
+            "arc-research",
+            "--project-name",
+            "Arc Research",
+            "--owner",
+            "research@example.com",
+            "--program-dir",
+            str(program_dir),
+        ],
+        obj={},
+    )
+    assert first_result.exit_code == 0, first_result.output
+    assert "Research bootstrap complete" in first_result.output
+    assert "programs_created: 2" in first_result.output
+    assert "programs_existing: 0" in first_result.output
+
+    second_result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(config_path),
+            "research",
+            "bootstrap",
+            "--project-slug",
+            "arc-research",
+            "--program-dir",
+            str(program_dir),
+        ],
+        obj={},
+    )
+    assert second_result.exit_code == 0, second_result.output
+    assert "programs_created: 0" in second_result.output
+    assert "programs_existing: 2" in second_result.output
+
+    session = get_session(f"sqlite:///{db_path}")
+    try:
+        assert session.query(ResearchProject).filter_by(slug="arc-research").count() == 1
+        assert session.query(ResearchProgramRecord).count() == 2
     finally:
         session.close()

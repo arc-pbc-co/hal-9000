@@ -1,10 +1,14 @@
 """Configuration management for HAL 9000."""
 
+import json
+import os
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+SUPPORTED_ENVIRONMENTS = {"local", "staging", "production"}
 
 
 class SourcesConfig(BaseSettings):
@@ -190,6 +194,10 @@ class Settings(BaseSettings):
     )
 
     # Sub-configurations
+    environment: str = Field(
+        default="local",
+        description="Deployment environment profile: local, staging, or production",
+    )
     sources: SourcesConfig = Field(default_factory=SourcesConfig)
     cloud: CloudConfig = Field(default_factory=CloudConfig)
     obsidian: ObsidianConfig = Field(default_factory=ObsidianConfig)
@@ -236,26 +244,149 @@ class Settings(BaseSettings):
         """Get expanded object storage root path."""
         return Path(self.storage.root_path).expanduser()
 
+    def is_production(self) -> bool:
+        """Return whether this configuration targets production."""
+        return self.environment == "production"
 
-def load_settings(config_file: Optional[Path] = None) -> Settings:
-    """Load settings from environment and optional config file."""
+    def profile_readiness_issues(self) -> list[str]:
+        """Return configuration issues that should be fixed before deployment."""
+        issues: list[str] = []
+        environment = normalize_environment(self.environment)
+        if self.environment != environment:
+            issues.append(f"Unsupported environment profile: {self.environment}")
+            return issues
+
+        if environment in {"staging", "production"}:
+            if not self.database.url.startswith("postgresql+psycopg://"):
+                issues.append("database.url should use postgresql+psycopg:// for staging/production")
+            if self.storage.backend != "s3":
+                issues.append("storage.backend should be s3 for staging/production")
+            if not self.storage.bucket:
+                issues.append("storage.bucket is required for staging/production")
+            if self.vector.backend != "pgvector":
+                issues.append("vector.backend should be pgvector for staging/production")
+
+        return issues
+
+
+def normalize_environment(environment: Optional[str]) -> str:
+    """Normalize and validate an environment profile name."""
+    normalized = (environment or "local").strip().lower()
+    if normalized not in SUPPORTED_ENVIRONMENTS:
+        supported = ", ".join(sorted(SUPPORTED_ENVIRONMENTS))
+        raise ValueError(f"Unsupported HAL 9000 environment profile: {environment}. Supported: {supported}")
+    return normalized
+
+
+def profile_config_path(environment: str) -> Path:
+    """Return the checked-in config path for an environment profile."""
+    return Path(__file__).resolve().parents[2] / "config" / f"{normalize_environment(environment)}.yaml"
+
+
+def load_settings(
+    config_file: Optional[Path] = None,
+    environment: Optional[str] = None,
+) -> Settings:
+    """Load settings from environment profile, optional config file, and env vars."""
     import yaml
 
-    settings = Settings()
+    profile_name = _resolve_environment(environment)
+    config_data: dict[str, Any] = {}
 
+    if environment is not None or _profile_env_value() is not None:
+        profile_path = profile_config_path(profile_name)
+        config_data = _deep_merge(config_data, _load_yaml_settings(profile_path, yaml))
+
+    config_data = _deep_merge(config_data, _load_yaml_settings(config_file, yaml))
+    config_data = _deep_merge(config_data, _environment_overrides())
+    if environment is not None:
+        config_data["environment"] = profile_name
+
+    if config_data:
+        return Settings(**config_data)
+    return Settings()
+
+
+def _load_yaml_settings(config_file: Optional[Path], yaml_module) -> dict[str, Any]:
     if config_file and config_file.exists():
         with open(config_file) as f:
-            config_data = yaml.safe_load(f)
+            config_data = yaml_module.safe_load(f)
             if config_data and "hal9000" in config_data:
-                # Merge YAML config with settings
-                settings = Settings(**config_data["hal9000"])
+                return config_data["hal9000"] or {}
+    return {}
 
-    return settings
+
+def _resolve_environment(environment: Optional[str]) -> str:
+    return normalize_environment(environment or _profile_env_value() or "local")
+
+
+def _profile_env_value() -> Optional[str]:
+    return (
+        os.getenv("HAL9000_PROFILE")
+        or os.getenv("HAL9000_ENVIRONMENT")
+        or os.getenv("HAL9000_ENV")
+    )
+
+
+def _environment_overrides() -> dict[str, Any]:
+    overrides: dict[str, Any] = {}
+    prefix = "HAL9000_"
+    for key, value in os.environ.items():
+        if not key.startswith(prefix):
+            continue
+        raw_path = key[len(prefix) :]
+        if raw_path in {"PROFILE", "ENV"}:
+            continue
+        path = [part.lower() for part in raw_path.split("__")]
+        if path == ["environment"]:
+            overrides["environment"] = normalize_environment(value)
+            continue
+        _set_nested(overrides, path, _parse_env_value(value))
+
+    if "ANTHROPIC_API_KEY" in os.environ:
+        overrides["anthropic_api_key"] = os.environ["ANTHROPIC_API_KEY"]
+    return overrides
+
+
+def _parse_env_value(value: str) -> Any:
+    stripped = value.strip()
+    if stripped.lower() in {"true", "false"}:
+        return stripped.lower() == "true"
+    if stripped.lower() == "null":
+        return None
+    if stripped.startswith(("[", "{")):
+        try:
+            return json.loads(stripped)
+        except json.JSONDecodeError:
+            return value
+    return value
+
+
+def _set_nested(target: dict[str, Any], path: list[str], value: Any) -> None:
+    current = target
+    for part in path[:-1]:
+        child = current.get(part)
+        if not isinstance(child, dict):
+            child = {}
+            current[part] = child
+        current = child
+    current[path[-1]] = value
+
+
+def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
 
 
 # Global settings instance (lazy loaded)
 _settings: Optional[Settings] = None
 _settings_config_path: Optional[Path] = None
+_settings_environment: Optional[str] = None
 
 
 def _normalize_config_path(config_file: Optional[Path]) -> Optional[Path]:
@@ -265,20 +396,28 @@ def _normalize_config_path(config_file: Optional[Path]) -> Optional[Path]:
     return config_file.expanduser().resolve()
 
 
-def get_settings(config_file: Optional[Path] = None, force_reload: bool = False) -> Settings:
+def get_settings(
+    config_file: Optional[Path] = None,
+    environment: Optional[str] = None,
+    force_reload: bool = False,
+) -> Settings:
     """Get the global settings instance.
 
     Args:
         config_file: Optional YAML config path to merge into settings.
+        environment: Optional environment profile to load.
         force_reload: Force reload from environment/config even if cached.
     """
     global _settings
     global _settings_config_path
+    global _settings_environment
 
     normalized_config = _normalize_config_path(config_file)
+    normalized_environment = _resolve_environment(environment)
     should_reload = (
         force_reload
         or _settings is None
+        or normalized_environment != _settings_environment
         or (
             normalized_config is not None
             and normalized_config != _settings_config_path
@@ -286,6 +425,7 @@ def get_settings(config_file: Optional[Path] = None, force_reload: bool = False)
     )
 
     if should_reload:
-        _settings = load_settings(normalized_config)
+        _settings = load_settings(normalized_config, environment=environment)
         _settings_config_path = normalized_config
+        _settings_environment = normalized_environment
     return _settings

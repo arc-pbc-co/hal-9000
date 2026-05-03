@@ -1,0 +1,29 @@
+# HAL 9000 local development profile
+
+hal9000:
+  environment: local
+
+  database:
+    url: sqlite:///./hal9000.db
+
+  storage:
+    backend: local
+    root_path: ./.hal9000_objects
+    bucket: null
+    prefix: ""
+    region: null
+    endpoint_url: null
+
+  vector:
+    backend: pgvector
+    embedding_provider: fake
+    embedding_dimension: 1536
+    embedding_model: null
+    retrieval_limit: 5
+
+  gateway:
+    host: 127.0.0.1
+    port: 9000
+
+  log_level: INFO
+  verbose: false

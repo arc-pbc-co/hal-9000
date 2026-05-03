@@ -14,6 +14,7 @@ hal [OPTIONS] COMMAND [ARGS]
 |--------|-------------|
 | `-v, --verbose` | Enable verbose output with debug logging |
 | `--config PATH` | Path to a custom configuration file |
+| `--profile local\|staging\|production` | Environment profile to load |
 | `--help` | Show help message and exit |
 
 ## Commands
@@ -25,6 +26,7 @@ hal research init-program ./program.md
 hal research validate-program ./program.md
 hal research create-project superalloys --name "Superalloys"
 hal research save-program ./program.md --project-slug superalloys
+hal research bootstrap --project-slug firm-research --owner research@example.com
 hal research queue-run --program-id <saved-program-id>
 hal research runs --project-slug superalloys
 hal research run-log <run-id>
@@ -48,6 +50,9 @@ document chunks through the configured embedding provider and returns the first
 semantic memory results for a project or run. During execution, the worker now
 prepares completed local documents into chunks, embeddings, first-pass claims,
 retrieval context, and staged outputs when corpus records are available.
+`bootstrap` creates or reuses a baseline firm project and starter research
+programs from `templates/research/programs`, making it safe to run repeatedly
+when setting up local, staging, or production stores.
 `--live-acquisition` lets the worker search, download, and process new papers
 within the run's paper/download budget and tool policy; each live acquisition
 call is recorded as a durable tool-call record. Runtime and RLM LLM-call budgets

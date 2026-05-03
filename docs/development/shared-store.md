@@ -19,6 +19,10 @@ hal research create-project superalloys \
 hal research save-program ./program.md \
   --project-slug superalloys
 
+hal research bootstrap \
+  --project-slug firm-research \
+  --owner research@example.com
+
 hal research queue-run \
   --program-id <saved-program-id> \
   --initiated-by research@example.com
@@ -101,9 +105,10 @@ session.commit()
   outcomes, budgets, warnings, outputs, and reviewer notes.
 - Record run-level review decisions across every staged output and advance runs
   to `promoted`, `rejected`, or `changes_requested`.
+- Bootstrap baseline firm research projects and starter programs idempotently.
 - Provide CLI commands for creating projects, saving programs, queuing runs,
-  listing runs, inspecting run logs/summaries, reviewing staged runs, appending
-  events, and advancing run state.
+  bootstrapping starter programs, listing runs, inspecting run logs/summaries,
+  reviewing staged runs, appending events, and advancing run state.
 - Stage generated research outputs.
 - Record review decisions and mirror them onto output status.
 - Persist canonical document chunks.

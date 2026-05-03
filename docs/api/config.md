@@ -27,6 +27,7 @@ settings = Settings(
 
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
+| `environment` | `str` | `"local"` | Environment profile (`local`, `staging`, or `production`) |
 | `sources` | `SourcesConfig` | `SourcesConfig()` | Document source paths |
 | `cloud` | `CloudConfig` | `CloudConfig()` | Cloud storage settings |
 | `obsidian` | `ObsidianConfig` | `ObsidianConfig()` | Obsidian vault settings |
@@ -34,6 +35,8 @@ settings = Settings(
 | `processing` | `ProcessingConfig` | `ProcessingConfig()` | Processing parameters |
 | `taxonomy` | `TaxonomyConfig` | `TaxonomyConfig()` | Taxonomy settings |
 | `database` | `DatabaseConfig` | `DatabaseConfig()` | Database connection |
+| `storage` | `StorageConfig` | `StorageConfig()` | Object storage backend |
+| `vector` | `VectorConfig` | `VectorConfig()` | Vector/embedding settings |
 | `anthropic_api_key` | `Optional[str]` | `None` | Anthropic API key |
 | `log_level` | `str` | `"INFO"` | Logging level |
 | `verbose` | `bool` | `False` | Verbose output |
@@ -70,7 +73,37 @@ Get expanded cache directory path.
 
 **Returns**: `Path` - Expanded absolute cache path
 
+##### profile_readiness_issues
+
+```python
+def profile_readiness_issues(self) -> list[str]
+```
+
+Return deployment readiness issues for the selected profile.
+
 ---
+
+## Environment Profiles
+
+Checked-in profile templates:
+
+- `config/local.yaml`
+- `config/staging.yaml`
+- `config/production.yaml`
+
+Load profiles from Python:
+
+```python
+from hal9000.config import load_settings
+
+settings = load_settings(environment="staging")
+```
+
+Load profiles from the CLI:
+
+```bash
+hal --profile production status
+```
 
 ### SourcesConfig
 

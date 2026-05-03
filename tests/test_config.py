@@ -17,6 +17,8 @@ from hal9000.config import (
     VectorConfig,
     get_settings,
     load_settings,
+    normalize_environment,
+    profile_config_path,
 )
 
 
@@ -300,6 +302,7 @@ class TestSettings:
         assert isinstance(settings.storage, StorageConfig)
         assert isinstance(settings.vector, VectorConfig)
         assert isinstance(settings.gateway, GatewayConfig)
+        assert settings.environment == "local"
         assert settings.log_level == "INFO"
         assert settings.verbose is False
 
@@ -340,14 +343,87 @@ class TestSettings:
     def test_custom_settings(self):
         """Test creating settings with custom values."""
         settings = Settings(
+            environment="staging",
             log_level="DEBUG",
             verbose=True,
             anthropic_api_key="test-key"
         )
 
+        assert settings.environment == "staging"
         assert settings.log_level == "DEBUG"
         assert settings.verbose is True
         assert settings.anthropic_api_key == "test-key"
+
+    def test_profile_readiness_issues_for_local(self):
+        """Local profile should be deployment-ready with local defaults."""
+        settings = Settings()
+
+        assert settings.profile_readiness_issues() == []
+
+    def test_profile_readiness_issues_for_production(self):
+        """Production profile should flag unsafe storage/database defaults."""
+        settings = Settings(environment="production")
+
+        issues = settings.profile_readiness_issues()
+
+        assert "database.url should use postgresql+psycopg:// for staging/production" in issues
+        assert "storage.backend should be s3 for staging/production" in issues
+
+
+class TestEnvironmentProfiles:
+    """Tests for named environment profiles."""
+
+    def test_normalize_environment(self):
+        """Profile names should normalize and reject unsupported values."""
+        assert normalize_environment("Production") == "production"
+
+    def test_profile_config_path(self):
+        """Profile config paths should point at checked-in templates."""
+        assert profile_config_path("local").name == "local.yaml"
+        assert profile_config_path("production").exists()
+
+    def test_load_staging_profile(self):
+        """The staging profile should load shared-service defaults."""
+        settings = load_settings(environment="staging")
+
+        assert settings.environment == "staging"
+        assert settings.database.url.startswith("postgresql+psycopg://")
+        assert settings.storage.backend == "s3"
+        assert settings.storage.bucket == "hal9000-staging-artifacts"
+        assert settings.vector.backend == "pgvector"
+        assert settings.profile_readiness_issues() == []
+
+    def test_explicit_config_overrides_profile(self, temp_directory: Path):
+        """A caller-supplied config file should override profile defaults."""
+        import yaml
+
+        config_path = temp_directory / "override.yaml"
+        with open(config_path, "w") as f:
+            yaml.dump(
+                {
+                    "hal9000": {
+                        "database": {"url": "sqlite:///./override.db"},
+                        "storage": {"backend": "local", "root_path": "./objects"},
+                    }
+                },
+                f,
+            )
+
+        settings = load_settings(config_file=config_path, environment="staging")
+
+        assert settings.environment == "staging"
+        assert settings.database.url == "sqlite:///./override.db"
+        assert settings.storage.backend == "local"
+
+    def test_environment_variables_override_profile(self, monkeypatch):
+        """Deployment env vars should override checked-in profile templates."""
+        monkeypatch.setenv("HAL9000_DATABASE__URL", "postgresql+psycopg://u:p@db/hal")
+        monkeypatch.setenv("HAL9000_STORAGE__BUCKET", "firm-hal-artifacts")
+
+        settings = load_settings(environment="production")
+
+        assert settings.database.url == "postgresql+psycopg://u:p@db/hal"
+        assert settings.storage.bucket == "firm-hal-artifacts"
 
 
 class TestLoadSettings:
@@ -418,6 +494,7 @@ class TestGetSettings:
         # Reset the global settings
         import hal9000.config as config_module
         config_module._settings = None
+        config_module._settings_environment = None
 
         settings = get_settings()
 
@@ -427,6 +504,7 @@ class TestGetSettings:
         """Test that get_settings returns the same instance."""
         import hal9000.config as config_module
         config_module._settings = None
+        config_module._settings_environment = None
 
         settings1 = get_settings()
         settings2 = get_settings()
@@ -441,6 +519,7 @@ class TestGetSettings:
 
         config_module._settings = None
         config_module._settings_config_path = None
+        config_module._settings_environment = None
 
         config_data = {
             "hal9000": {
@@ -453,6 +532,21 @@ class TestGetSettings:
 
         settings = get_settings(config_file=config_path, force_reload=True)
         assert settings.log_level == "WARNING"
+
+    def test_get_settings_respects_environment_profile(self):
+        """The settings singleton should cache by environment profile."""
+        import hal9000.config as config_module
+
+        config_module._settings = None
+        config_module._settings_config_path = None
+        config_module._settings_environment = None
+
+        local_settings = get_settings(environment="local", force_reload=True)
+        staging_settings = get_settings(environment="staging")
+
+        assert local_settings.environment == "local"
+        assert staging_settings.environment == "staging"
+        assert local_settings is not staging_settings
 
 
 class TestEnvironmentVariables:

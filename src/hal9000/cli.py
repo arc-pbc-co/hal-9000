@@ -29,7 +29,8 @@ def _get_settings_from_context(ctx: click.Context):
     from hal9000.config import get_settings
 
     config_path = ctx.obj.get("config_path") if ctx.obj else None
-    return get_settings(config_file=config_path)
+    profile = ctx.obj.get("profile") if ctx.obj else None
+    return get_settings(config_file=config_path, environment=profile)
 
 
 def _build_rlm_processor(settings):
@@ -67,8 +68,18 @@ def _parse_sources_option(raw_sources: str) -> list[str]:
     type=click.Path(exists=True, path_type=Path),
     help="Path to config file",
 )
+@click.option(
+    "--profile",
+    type=click.Choice(["local", "staging", "production"]),
+    help="Environment profile to load",
+)
 @click.pass_context
-def cli(ctx: click.Context, verbose: bool, config: Optional[Path]) -> None:
+def cli(
+    ctx: click.Context,
+    verbose: bool,
+    config: Optional[Path],
+    profile: Optional[str],
+) -> None:
     """HAL 9000 - AI-powered research assistant.
 
     Process PDFs, organize knowledge, and generate research contexts.
@@ -76,6 +87,7 @@ def cli(ctx: click.Context, verbose: bool, config: Optional[Path]) -> None:
     ctx.ensure_object(dict)
     ctx.obj["verbose"] = verbose
     ctx.obj["config_path"] = config
+    ctx.obj["profile"] = profile
 
     setup_logging(verbose)
     _get_settings_from_context(ctx)
@@ -649,12 +661,20 @@ def status(ctx: click.Context) -> None:
     table.add_column("Setting", style="cyan")
     table.add_column("Value", style="green")
 
+    table.add_row("Environment", settings.environment)
     table.add_row("Database", settings.database.url)
+    table.add_row("Object Storage", settings.storage.backend)
+    table.add_row("Vector Backend", settings.vector.backend)
     table.add_row("Obsidian Vault", settings.obsidian.vault_path)
     table.add_row("ADAM Output", settings.adam.output_path)
     table.add_row("Log Level", settings.log_level)
 
     console.print(table)
+    readiness_issues = settings.profile_readiness_issues()
+    if readiness_issues:
+        console.print("\n[yellow]Profile readiness issues:[/yellow]")
+        for issue in readiness_issues:
+            console.print(f"  - {issue}")
 
     # Database stats
     try:
@@ -901,6 +921,87 @@ def research_save_program(
         console.print(f"  id: {record.id}")
         if project:
             console.print(f"  project: {project.slug}")
+    finally:
+        session.close()
+
+
+@research.command("bootstrap")
+@click.option("--project-slug", default="firm-research", help="Project slug to create or reuse")
+@click.option("--project-name", default="Firm Research", help="Project display name")
+@click.option("--owner", help="Project/program owner")
+@click.option(
+    "--program-dir",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=Path("templates/research/programs"),
+    help="Directory containing starter program Markdown files",
+)
+@click.pass_context
+def research_bootstrap(
+    ctx: click.Context,
+    project_slug: str,
+    project_name: str,
+    owner: Optional[str],
+    program_dir: Path,
+) -> None:
+    """Create or reuse the baseline firm project and starter programs."""
+    from hal9000.db.models import ResearchProgramRecord, init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research import load_program
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        project = store.get_project_by_slug(project_slug)
+        project_created = project is None
+        if project is None:
+            project = store.create_project(
+                name=project_name,
+                slug=project_slug,
+                owner=owner,
+                description="Baseline shared project for firm-wide research programs.",
+            )
+
+        program_paths = sorted(program_dir.glob("*.md"))
+        if not program_paths:
+            raise click.ClickException(f"No starter programs found in {program_dir}")
+
+        table = Table(title="Research Bootstrap")
+        table.add_column("Program", style="cyan")
+        table.add_column("Version", style="magenta")
+        table.add_column("Status", style="green")
+        table.add_column("ID")
+
+        created = 0
+        reused = 0
+        for program_path in program_paths:
+            program = load_program(program_path)
+            existing = (
+                session.query(ResearchProgramRecord)
+                .filter_by(
+                    project_id=project.id,
+                    name=program.spec.name,
+                    version=program.spec.version,
+                )
+                .one_or_none()
+            )
+            if existing:
+                reused += 1
+                table.add_row(existing.name, existing.version, "existing", existing.id)
+                continue
+
+            record = store.save_program(program, project=project)
+            created += 1
+            table.add_row(record.name, record.version, "created", record.id)
+
+        session.commit()
+        console.print("[green]Research bootstrap complete.[/green]")
+        console.print(f"  project: {project.slug} ({'created' if project_created else 'existing'})")
+        console.print(f"  programs_created: {created}")
+        console.print(f"  programs_existing: {reused}")
+        console.print(table)
     finally:
         session.close()
 
