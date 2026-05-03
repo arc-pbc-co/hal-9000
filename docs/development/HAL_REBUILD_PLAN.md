@@ -39,10 +39,12 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add LLM-call budget enforcement and `llm.call` tool-call records during RLM processing.
 - [x] Add acquisition progress telemetry events during live worker acquisition.
 - [x] Add per-paper acquisition telemetry for searched, downloaded, processed, skipped, and failed papers.
+- [x] Add reviewer-facing run telemetry summaries over events, tool calls, acquisition outcomes, budgets, warnings, and staged outputs.
 
 ### In Progress
 
-- [ ] Add reviewer-facing run telemetry views and summaries.
+- [ ] Add review workflow commands/API: promote, reject, and request changes.
+- [ ] Add environment profiles for local, staging, and production.
 
 ### Remaining
 
@@ -100,7 +102,7 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Connect live acquisition/search/download execution into the worker.
 - [x] Add budget enforcement for runtime and LLM calls.
 - [x] Add richer acquisition processing telemetry for per-document outcomes and failures.
-- [ ] Add reviewer-facing run telemetry views and summaries.
+- [x] Add reviewer-facing run telemetry views and summaries.
 - [ ] Add retry, cancellation, and timeout handling.
 - [ ] Add scheduled or queued worker process.
 
@@ -208,10 +210,11 @@ Implemented in this slice:
 - Runtime budget is checked before major worker phases, and RLM model calls emit `llm.call` tool-call records before provider execution.
 - Live acquisition emits `acquisition.progress` run events for search, download, and processing stages.
 - Acquisition results now include a per-paper event ledger, and workers mirror those into `acquisition.paper.*` run events.
+- `RunTelemetrySummarizer` and `hal research run-summary` now provide a compact reviewer view over run events, tool calls, acquisition outcomes, budget usage, warnings, staged outputs, and reviewer notes.
 
 ## Milestone 3: Research Run Orchestrator
 
-Status: planned.
+Status: started.
 
 Deliverables:
 
@@ -259,5 +262,5 @@ Deliverables:
 
 ## Immediate Next Tasks
 
+- Add review workflow commands/API: promote, reject, and request changes.
 - Add environment profiles for local, staging, and production.
-- Add reviewer-facing run telemetry views and summaries.

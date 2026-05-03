@@ -28,6 +28,8 @@ hal research save-program ./program.md --project-slug superalloys
 hal research queue-run --program-id <saved-program-id>
 hal research runs --project-slug superalloys
 hal research run-log <run-id>
+hal research run-summary <run-id>
+hal research run-summary <run-id> --json
 hal research search-chunks "single crystal creep resistance" --project-slug superalloys
 hal research log-run-event <run-id> --event-type tool.search
 hal research update-run <run-id> --status running
@@ -48,6 +50,9 @@ within the run's paper/download budget and tool policy; each live acquisition
 call is recorded as a durable tool-call record. Runtime and RLM LLM-call budgets
 are enforced during worker execution, and live acquisition emits progress events
 plus per-paper `acquisition.paper.*` outcomes into the run log.
+`run-summary` condenses the durable event log, tool calls, acquisition outcomes,
+budget usage, warnings, staged outputs, and reviewer notes into a compact review
+view. Use `--json` when feeding dashboards or a future review UI.
 
 ### `hal acquire`
 

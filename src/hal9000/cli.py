@@ -1064,6 +1064,173 @@ def research_run_log(ctx: click.Context, run_id: str) -> None:
         session.close()
 
 
+@research.command("run-summary")
+@click.argument("run_id")
+@click.option("--json", "as_json", is_flag=True, help="Emit the summary as JSON")
+@click.pass_context
+def research_run_summary(ctx: click.Context, run_id: str, as_json: bool) -> None:
+    """Show reviewer-facing telemetry for a research run."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.telemetry import RunTelemetrySummarizer
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        run = store.get_run(run_id)
+        if run is None:
+            raise click.ClickException(f"Research run not found: {run_id}")
+
+        summary = RunTelemetrySummarizer(store).summarize(run)
+        if as_json:
+            console.print(json.dumps(summary.to_dict(), indent=2, sort_keys=True))
+            return
+
+        _render_run_summary(summary)
+    finally:
+        session.close()
+
+
+def _render_run_summary(summary) -> None:
+    """Render a telemetry summary with compact review tables."""
+    overview = Table(title=f"Run Summary: {summary.run_id}")
+    overview.add_column("Field", style="cyan")
+    overview.add_column("Value", style="green")
+    overview.add_row("Status", summary.status)
+    overview.add_row("Project", summary.project_slug or "-")
+    overview.add_row("Program", summary.program_name or "-")
+    overview.add_row("Initiated By", summary.initiated_by or "-")
+    overview.add_row("Events", str(summary.event_count))
+    overview.add_row("Tool Calls", str(summary.tool_call_count))
+    overview.add_row("Chunks", str(summary.chunk_count))
+    overview.add_row("Claims", str(summary.claim_count))
+    overview.add_row("Objective", summary.objective)
+    console.print(overview)
+
+    budget = summary.budget
+    budget_table = Table(title="Budget Usage")
+    budget_table.add_column("Metric", style="cyan")
+    budget_table.add_column("Used", justify="right", style="green")
+    budget_table.add_column("Limit", justify="right", style="magenta")
+    budget_table.add_column("State", style="yellow")
+    budget_table.add_row(
+        "Papers Found",
+        str(budget.papers_found),
+        str(budget.max_papers),
+        "-",
+    )
+    budget_table.add_row(
+        "Downloads",
+        str(budget.papers_downloaded),
+        str(budget.max_downloads),
+        "exceeded" if budget.papers_downloaded > budget.max_downloads else "-",
+    )
+    budget_table.add_row(
+        "Processed Papers",
+        str(budget.papers_processed),
+        str(budget.max_papers),
+        "-",
+    )
+    budget_table.add_row(
+        "LLM Calls",
+        str(budget.llm_calls_used),
+        str(budget.max_llm_calls),
+        "exceeded" if budget.llm_calls_exceeded else "-",
+    )
+    budget_table.add_row(
+        "Runtime",
+        f"{budget.runtime_seconds}s",
+        f"{budget.max_runtime_minutes}m",
+        "exceeded" if budget.runtime_exceeded else "-",
+    )
+    console.print(budget_table)
+
+    acquisition = summary.acquisition
+    acquisition_table = Table(title="Acquisition")
+    acquisition_table.add_column("Found", justify="right", style="cyan")
+    acquisition_table.add_column("Downloaded", justify="right", style="green")
+    acquisition_table.add_column("Processed", justify="right", style="green")
+    acquisition_table.add_column("Skipped", justify="right", style="yellow")
+    acquisition_table.add_column("Failed", justify="right", style="red")
+    acquisition_table.add_row(
+        str(acquisition.papers_found),
+        str(acquisition.papers_downloaded),
+        str(acquisition.papers_processed),
+        str(acquisition.papers_skipped),
+        str(acquisition.papers_failed),
+    )
+    console.print(acquisition_table)
+
+    if acquisition.paper_events:
+        paper_table = Table(title="Paper Outcomes")
+        paper_table.add_column("Status", style="green")
+        paper_table.add_column("Stage", style="cyan")
+        paper_table.add_column("Source", style="blue")
+        paper_table.add_column("Identifier", style="magenta")
+        paper_table.add_column("Title")
+        paper_table.add_column("Reason", style="yellow")
+        for event in acquisition.paper_events[:20]:
+            paper_table.add_row(
+                event.status,
+                event.stage or "-",
+                event.source or "-",
+                event.identifier or "-",
+                (event.title or "-")[:80],
+                event.reason or "-",
+            )
+        console.print(paper_table)
+        if len(acquisition.paper_events) > 20:
+            console.print(
+                f"[dim]Showing 20 of {len(acquisition.paper_events)} paper outcome events.[/dim]"
+            )
+
+    tool_table = Table(title="Tool Calls")
+    tool_table.add_column("#", justify="right", style="cyan")
+    tool_table.add_column("Tool", style="green")
+    tool_table.add_column("Status", style="magenta")
+    tool_table.add_column("Actor", style="blue")
+    tool_table.add_column("Error", style="red")
+    for call in summary.tool_calls:
+        tool_table.add_row(
+            str(call.sequence),
+            call.tool_name,
+            call.status,
+            call.actor or "-",
+            call.error_message or "-",
+        )
+    console.print(tool_table)
+
+    output_table = Table(title="Outputs")
+    output_table.add_column("Type", style="cyan")
+    output_table.add_column("Status", style="green")
+    output_table.add_column("Format", style="magenta")
+    output_table.add_column("Title")
+    output_table.add_column("Artifact", style="blue")
+    for output in summary.outputs:
+        output_table.add_row(
+            output.output_type,
+            output.status,
+            output.format,
+            output.title,
+            output.artifact_uri or "-",
+        )
+    console.print(output_table)
+
+    if summary.warnings:
+        console.print("\n[yellow]Warnings[/yellow]")
+        for warning in summary.warnings:
+            console.print(f"  - {warning}")
+
+    console.print("\n[bold]Reviewer Notes[/bold]")
+    for note in summary.reviewer_notes:
+        console.print(f"  - {note}")
+
+
 @research.command("search-chunks")
 @click.argument("query_text")
 @click.option("--project-slug", help="Limit search to chunks attached to runs in a project")

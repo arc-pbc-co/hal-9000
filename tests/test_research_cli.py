@@ -197,6 +197,39 @@ def test_research_cli_project_program_and_run_flow(temp_directory: Path):
     assert "corpus_documents: 0" in execute_result.output
     assert "retrieved_context: 0" in execute_result.output
 
+    summary_result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(config_path),
+            "research",
+            "run-summary",
+            run_id,
+        ],
+        obj={},
+    )
+    assert summary_result.exit_code == 0, summary_result.output
+    assert "Run Summary" in summary_result.output
+    assert "Budget Usage" in summary_result.output
+    assert "Reviewer Notes" in summary_result.output
+    assert "research_brief" in summary_result.output
+
+    json_summary_result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(config_path),
+            "research",
+            "run-summary",
+            run_id,
+            "--json",
+        ],
+        obj={},
+    )
+    assert json_summary_result.exit_code == 0, json_summary_result.output
+    assert '"run_id"' in json_summary_result.output
+    assert '"status": "staged"' in json_summary_result.output
+
     session = get_session(f"sqlite:///{db_path}")
     try:
         run = session.get(ResearchRun, run_id)

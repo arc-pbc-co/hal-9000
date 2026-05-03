@@ -25,6 +25,7 @@ hal research queue-run \
 
 hal research runs --project-slug superalloys
 hal research run-log <run-id>
+hal research run-summary <run-id>
 hal research log-run-event <run-id> \
   --event-type tool.search \
   --message "Search started."
@@ -92,8 +93,11 @@ session.commit()
 - Append ordered run events and update run status with lifecycle events.
 - Record durable worker tool calls for acquisition and RLM LLM-call usage.
 - Mirror per-paper acquisition outcomes into ordered run events.
+- Summarize run telemetry for reviewers across events, tool calls, acquisition
+  outcomes, budgets, warnings, outputs, and reviewer notes.
 - Provide CLI commands for creating projects, saving programs, queuing runs,
-  listing runs, inspecting run logs, appending events, and advancing run state.
+  listing runs, inspecting run logs/summaries, appending events, and advancing
+  run state.
 - Stage generated research outputs.
 - Record review decisions and mirror them onto output status.
 - Persist canonical document chunks.
