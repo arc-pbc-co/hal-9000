@@ -42,6 +42,8 @@ hal research update-run <run-id> \
   --message "Worker started."
 
 hal research execute-run <run-id> --actor hal-worker
+hal research cancel-run <run-id> --actor reviewer@example.com
+hal research work-queue --limit 5 --max-attempts 2
 ```
 
 The first output generator can stage all required outputs declared by a saved
@@ -115,6 +117,9 @@ session.commit()
 - Persist staged claims with first evidence links.
 - Stage required contract outputs and run reports through `ResearchOutputGenerator`.
 - Execute queued runs through `BoundedResearchWorker`.
+- Execute queued run batches through `hal research work-queue`.
+- Record cancellation requests and worker cancellation acknowledgement events.
+- Record worker phase retries and timeout events for safer long-running jobs.
 
 ## Design Notes
 

@@ -1,6 +1,12 @@
 """Research program primitives for HAL 9000."""
 
-from hal9000.research.orchestrator import BoundedResearchWorker, RunExecutionResult
+from hal9000.research.orchestrator import (
+    BoundedResearchWorker,
+    RunCancelledError,
+    RunExecutionResult,
+    WorkerExecutionControls,
+    WorkerPhaseTimeoutError,
+)
 from hal9000.research.outputs import ResearchOutputGenerator, StagedOutputs
 from hal9000.research.program import (
     OutputContract,
@@ -21,7 +27,10 @@ __all__ = [
     "ResearchProgramSpec",
     "ResearchOutputGenerator",
     "StagedOutputs",
+    "RunCancelledError",
     "RunExecutionResult",
+    "WorkerExecutionControls",
+    "WorkerPhaseTimeoutError",
     "load_program",
     "render_program_template",
 ]

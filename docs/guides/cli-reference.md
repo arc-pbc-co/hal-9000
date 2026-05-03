@@ -40,6 +40,9 @@ hal research log-run-event <run-id> --event-type tool.search
 hal research update-run <run-id> --status running
 hal research execute-run <run-id> --actor hal-worker
 hal research execute-run <run-id> --actor hal-worker --live-acquisition
+hal research execute-run <run-id> --max-attempts 2 --phase-timeout-seconds 300
+hal research cancel-run <run-id> --actor reviewer@example.com
+hal research work-queue --limit 5 --max-attempts 2
 ```
 
 These commands create and validate autoresearch-style research programs, persist
@@ -63,6 +66,10 @@ budget usage, warnings, staged outputs, and reviewer notes into a compact review
 view. Use `--json` when feeding dashboards or a future review UI.
 `review-run` records a reviewer decision for every staged output on the run and
 advances the run to `promoted`, `rejected`, or `changes_requested`.
+`cancel-run` records cancellation requests; queued runs are cancelled immediately,
+while running runs move to `cancel_requested` until the worker observes the
+request. `work-queue` executes queued runs once, which makes it suitable for
+cron, process managers, or a future scheduler service.
 
 ### `hal acquire`
 

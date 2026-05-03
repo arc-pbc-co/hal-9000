@@ -43,11 +43,13 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add review workflow commands/API for promote, reject, and request changes.
 - [x] Add environment profiles for local, staging, and production.
 - [x] Add seed/bootstrap commands for firm projects and starter programs.
+- [x] Add retry, cancellation, and timeout handling for worker execution.
+- [x] Add queued worker execution command for scheduler/process-manager deployments.
 
 ### In Progress
 
-- [ ] Add retry, cancellation, and timeout handling.
-- [ ] Add scheduled or queued worker process.
+- [ ] Add observability dashboards/API for run status, tool calls, cost, and failures.
+- [ ] Add deployment manifests for API, workers, database, object store, and docs.
 
 ### Remaining
 
@@ -106,8 +108,8 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add budget enforcement for runtime and LLM calls.
 - [x] Add richer acquisition processing telemetry for per-document outcomes and failures.
 - [x] Add reviewer-facing run telemetry views and summaries.
-- [ ] Add retry, cancellation, and timeout handling.
-- [ ] Add scheduled or queued worker process.
+- [x] Add retry, cancellation, and timeout handling.
+- [x] Add scheduled or queued worker process.
 
 ### Phase E: Output Framework
 
@@ -217,6 +219,8 @@ Implemented in this slice:
 - `ResearchStore.review_run_outputs` and `hal research review-run` now record reviewer decisions across staged outputs and advance runs to `promoted`, `rejected`, or `changes_requested`.
 - `local`, `staging`, and `production` profiles now provide explicit operating defaults for database, object storage, vector retrieval, gateway binding, and readiness checks.
 - `hal research bootstrap` now creates or reuses the baseline firm research project and starter programs idempotently.
+- `BoundedResearchWorker` now supports bounded phase retries, cancellation acknowledgement, and phase timeout accounting.
+- `hal research work-queue` now executes queued runs once, providing the first scheduler/process-manager entry point.
 
 ## Milestone 3: Research Run Orchestrator
 
@@ -237,6 +241,8 @@ stateDiagram-v2
   queued --> running
   running --> staged
   running --> failed
+  running --> cancel_requested
+  cancel_requested --> cancelled
   staged --> promoted
   staged --> rejected
   staged --> changes_requested
@@ -270,5 +276,5 @@ Deliverables:
 
 ## Immediate Next Tasks
 
-- Add retry, cancellation, and timeout handling.
-- Add scheduled or queued worker process.
+- Add observability dashboards/API for run status, tool calls, cost, and failures.
+- Add deployment manifests for API, workers, database, object store, and docs.

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, TypeVar
 
 from hal9000.db.models import ResearchRun
 from hal9000.research.acquisition import AcquisitionRunner, WorkerAcquisitionResult
@@ -14,6 +15,8 @@ from hal9000.vector import EmbeddingProvider, VectorRepository
 if TYPE_CHECKING:
     from hal9000.db.store import ResearchStore
     from hal9000.research.pipeline import ResearchCorpusPipeline
+
+T = TypeVar("T")
 
 
 @dataclass
@@ -30,6 +33,22 @@ class RunExecutionResult:
     acquisition: WorkerAcquisitionResult | None = None
 
 
+@dataclass(frozen=True)
+class WorkerExecutionControls:
+    """Safety controls for bounded worker execution."""
+
+    max_attempts: int = 1
+    phase_timeout_seconds: float | None = None
+
+
+class RunCancelledError(RuntimeError):
+    """Raised when a run cancellation request is observed."""
+
+
+class WorkerPhaseTimeoutError(TimeoutError):
+    """Raised when a worker phase exceeds its configured timeout."""
+
+
 class BoundedResearchWorker:
     """Minimal worker that executes queued runs through staged outputs."""
 
@@ -41,6 +60,7 @@ class BoundedResearchWorker:
         retrieval_limit: int = 5,
         corpus_pipeline: ResearchCorpusPipeline | None = None,
         acquisition_runner: AcquisitionRunner | None = None,
+        controls: WorkerExecutionControls | None = None,
     ):
         """Initialize the worker with a shared store."""
         self.store = store
@@ -50,16 +70,18 @@ class BoundedResearchWorker:
         self.retrieval_limit = retrieval_limit
         self.corpus_pipeline = corpus_pipeline
         self.acquisition_runner = acquisition_runner
+        self.controls = controls or WorkerExecutionControls()
 
     def execute_run(self, run_id: str) -> RunExecutionResult:
         """Execute a queued run and stage reviewable outputs."""
         run = self.store.get_run(run_id)
         if run is None:
             raise ValueError(f"Research run not found: {run_id}")
-        if run.status not in {"queued", "running"}:
+        if run.status not in {"queued", "running", "cancel_requested"}:
             raise ValueError(f"Research run must be queued or running, not {run.status}")
 
         try:
+            self._raise_if_cancelled(run, "worker.start")
             if run.status == "queued":
                 self.store.update_run_status(
                     run,
@@ -69,19 +91,39 @@ class BoundedResearchWorker:
                 )
 
             self._require_runtime_budget(run, "worker.start")
-            acquisition_result = self._run_acquisition(run)
-            self._require_runtime_budget(run, "corpus.prepare")
-            corpus_result = self._prepare_corpus(run)
-            self._require_runtime_budget(run, "retrieval.context")
-            retrieval_context = self._build_retrieval_context(run)
-            self._require_runtime_budget(run, "outputs.stage")
-            staged = self.output_generator.stage_contract_outputs(
+            acquisition_result = self._run_phase(
                 run,
-                created_by=self.actor,
-                mark_run_staged=True,
-                retrieval_context=retrieval_context,
+                "acquisition",
+                lambda: self._run_acquisition(run),
             )
-            report = self.output_generator.stage_run_report(run, created_by=self.actor)
+            self._require_runtime_budget(run, "corpus.prepare")
+            corpus_result = self._run_phase(
+                run,
+                "corpus.prepare",
+                lambda: self._prepare_corpus(run),
+            )
+            self._require_runtime_budget(run, "retrieval.context")
+            retrieval_context = self._run_phase(
+                run,
+                "retrieval.context",
+                lambda: self._build_retrieval_context(run),
+            )
+            self._require_runtime_budget(run, "outputs.stage")
+            staged = self._run_phase(
+                run,
+                "outputs.stage",
+                lambda: self.output_generator.stage_contract_outputs(
+                    run,
+                    created_by=self.actor,
+                    mark_run_staged=True,
+                    retrieval_context=retrieval_context,
+                ),
+            )
+            report = self._run_phase(
+                run,
+                "output.run_report",
+                lambda: self.output_generator.stage_run_report(run, created_by=self.actor),
+            )
             self.store.append_run_event(
                 run,
                 event_type="worker.completed",
@@ -108,6 +150,15 @@ class BoundedResearchWorker:
                 corpus_claim_ids=corpus_result.claim_ids,
                 acquisition=acquisition_result,
             )
+        except RunCancelledError as exc:
+            self.store.update_run_status(
+                run,
+                status="cancelled",
+                message=str(exc),
+                actor=self.actor,
+                payload={"error_type": type(exc).__name__},
+            )
+            raise
         except Exception as exc:
             self.store.update_run_status(
                 run,
@@ -117,6 +168,80 @@ class BoundedResearchWorker:
                 payload={"error_type": type(exc).__name__},
             )
             raise
+
+    def _run_phase(self, run: ResearchRun, phase: str, func: Callable[[], T]) -> T:
+        """Run a phase with cancellation checks, retries, and timeout accounting."""
+        max_attempts = max(1, self.controls.max_attempts)
+        for attempt in range(1, max_attempts + 1):
+            self._raise_if_cancelled(run, phase)
+            started = time.monotonic()
+            try:
+                result = func()
+                self._raise_if_phase_timed_out(run, phase, started, attempt)
+                self._raise_if_cancelled(run, phase)
+                return result
+            except (BudgetExceededError, RunCancelledError):
+                raise
+            except Exception as exc:
+                if attempt >= max_attempts:
+                    raise
+                self.store.append_run_event(
+                    run,
+                    event_type="worker.phase.retrying",
+                    message=f"{phase} failed; retrying attempt {attempt + 1}/{max_attempts}.",
+                    actor=self.actor,
+                    payload={
+                        "phase": phase,
+                        "attempt": attempt,
+                        "next_attempt": attempt + 1,
+                        "max_attempts": max_attempts,
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                    },
+                )
+        raise RuntimeError(f"Worker phase did not return: {phase}")
+
+    def _raise_if_phase_timed_out(
+        self,
+        run: ResearchRun,
+        phase: str,
+        started: float,
+        attempt: int,
+    ) -> None:
+        timeout = self.controls.phase_timeout_seconds
+        if timeout is None:
+            return
+        elapsed = time.monotonic() - started
+        if elapsed <= timeout:
+            return
+        message = f"Worker phase timed out: {phase} took {elapsed:.3f}s > {timeout:.3f}s"
+        self.store.append_run_event(
+            run,
+            event_type="worker.phase.timeout",
+            message=message,
+            actor=self.actor,
+            payload={
+                "phase": phase,
+                "attempt": attempt,
+                "elapsed_seconds": elapsed,
+                "timeout_seconds": timeout,
+            },
+        )
+        raise WorkerPhaseTimeoutError(message)
+
+    def _raise_if_cancelled(self, run: ResearchRun, phase: str) -> None:
+        """Raise if a queued or running run has been marked for cancellation."""
+        self.store.session.refresh(run)
+        if run.status == "cancel_requested":
+            message = f"Run cancellation requested during {phase}."
+            self.store.append_run_event(
+                run,
+                event_type="worker.cancelled",
+                message=message,
+                actor=self.actor,
+                payload={"phase": phase},
+            )
+            raise RunCancelledError(message)
 
     def _run_acquisition(self, run: ResearchRun) -> WorkerAcquisitionResult | None:
         """Run live acquisition when configured and allowed by budget."""

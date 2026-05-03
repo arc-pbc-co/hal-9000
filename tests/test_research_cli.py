@@ -331,3 +331,124 @@ def test_research_cli_bootstrap_is_idempotent(temp_directory: Path):
         assert session.query(ResearchProgramRecord).count() == 2
     finally:
         session.close()
+
+
+def test_research_cli_cancel_and_work_queue(temp_directory: Path):
+    """CLI should cancel queued runs and execute queued runs through the worker command."""
+    config_path, db_path = _write_config(temp_directory)
+    program_path = temp_directory / "program.md"
+    program_path.write_text(
+        render_program_template(
+            name="Queue Program",
+            objective="Run through the queue worker.",
+            owner="research@example.com",
+        )
+    )
+    runner = CliRunner()
+
+    create_result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(config_path),
+            "research",
+            "create-project",
+            "queue-project",
+        ],
+        obj={},
+    )
+    assert create_result.exit_code == 0, create_result.output
+
+    save_result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(config_path),
+            "research",
+            "save-program",
+            str(program_path),
+            "--project-slug",
+            "queue-project",
+        ],
+        obj={},
+    )
+    assert save_result.exit_code == 0, save_result.output
+
+    session = get_session(f"sqlite:///{db_path}")
+    try:
+        program = session.query(ResearchProgramRecord).filter_by(name="Queue Program").one()
+        program_id = program.id
+    finally:
+        session.close()
+
+    cancel_queue_result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(config_path),
+            "research",
+            "queue-run",
+            "--program-id",
+            program_id,
+        ],
+        obj={},
+    )
+    assert cancel_queue_result.exit_code == 0, cancel_queue_result.output
+
+    session = get_session(f"sqlite:///{db_path}")
+    try:
+        cancelled_run_id = session.query(ResearchRun).one().id
+    finally:
+        session.close()
+
+    cancel_result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(config_path),
+            "research",
+            "cancel-run",
+            cancelled_run_id,
+            "--actor",
+            "tester@example.com",
+        ],
+        obj={},
+    )
+    assert cancel_result.exit_code == 0, cancel_result.output
+    assert "status: cancelled" in cancel_result.output
+
+    queue_result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(config_path),
+            "research",
+            "queue-run",
+            "--program-id",
+            program_id,
+        ],
+        obj={},
+    )
+    assert queue_result.exit_code == 0, queue_result.output
+
+    worker_result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(config_path),
+            "research",
+            "work-queue",
+            "--limit",
+            "1",
+        ],
+        obj={},
+    )
+    assert worker_result.exit_code == 0, worker_result.output
+    assert "Queued worker processed 1 run" in worker_result.output
+
+    session = get_session(f"sqlite:///{db_path}")
+    try:
+        statuses = sorted(run.status for run in session.query(ResearchRun).all())
+        assert statuses == ["cancelled", "staged"]
+    finally:
+        session.close()

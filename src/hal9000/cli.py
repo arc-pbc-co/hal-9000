@@ -1520,6 +1520,8 @@ def research_log_run_event(
             "promoted",
             "rejected",
             "changes_requested",
+            "cancel_requested",
+            "cancelled",
         ]
     ),
     help="New run status",
@@ -1565,6 +1567,94 @@ def research_update_run(
         session.close()
 
 
+@research.command("cancel-run")
+@click.argument("run_id")
+@click.option("--actor", help="User or agent requesting cancellation")
+@click.option("--reason", help="Cancellation reason")
+@click.pass_context
+def research_cancel_run(
+    ctx: click.Context,
+    run_id: str,
+    actor: Optional[str],
+    reason: Optional[str],
+) -> None:
+    """Request cancellation for a queued or running research run."""
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        run = store.get_run(run_id)
+        if run is None:
+            raise click.ClickException(f"Research run not found: {run_id}")
+        if run.status == "queued":
+            status = "cancelled"
+            message = reason or "Queued run cancelled before execution."
+        elif run.status == "running":
+            status = "cancel_requested"
+            message = reason or "Run cancellation requested."
+        else:
+            raise click.ClickException(f"Cannot cancel run with status: {run.status}")
+
+        event = store.update_run_status(
+            run,
+            status=status,
+            message=message,
+            actor=actor,
+            payload={"reason": reason},
+        )
+        session.commit()
+        console.print("[green]Research run cancellation recorded.[/green]")
+        console.print(f"  id: {run.id}")
+        console.print(f"  status: {run.status}")
+        console.print(f"  event: {event.event_type} #{event.sequence}")
+    finally:
+        session.close()
+
+
+def _build_research_worker(
+    store,
+    settings,
+    session,
+    actor: str,
+    live_acquisition: bool,
+    max_attempts: int,
+    phase_timeout_seconds: Optional[float],
+):
+    """Build a configured bounded research worker for CLI commands."""
+    from hal9000.research import BoundedResearchWorker, WorkerExecutionControls
+    from hal9000.research.acquisition import LiveAcquisitionRunner
+    from hal9000.research.pipeline import ResearchCorpusPipeline
+    from hal9000.vector import create_embedding_provider
+
+    retrieval_provider = create_embedding_provider(
+        settings.vector.embedding_provider,
+        dimension=settings.vector.embedding_dimension,
+        model=settings.vector.embedding_model,
+    )
+    acquisition_runner = LiveAcquisitionRunner(settings, session) if live_acquisition else None
+    return BoundedResearchWorker(
+        store,
+        actor=actor,
+        retrieval_provider=retrieval_provider,
+        retrieval_limit=settings.vector.retrieval_limit,
+        corpus_pipeline=ResearchCorpusPipeline(
+            store,
+            embedding_provider=retrieval_provider,
+            chunk_size=settings.processing.chunk_size,
+        ),
+        acquisition_runner=acquisition_runner,
+        controls=WorkerExecutionControls(
+            max_attempts=max_attempts,
+            phase_timeout_seconds=phase_timeout_seconds,
+        ),
+    )
+
+
 @research.command("execute-run")
 @click.argument("run_id")
 @click.option("--actor", default="hal-worker", help="Worker or agent name")
@@ -1573,20 +1663,24 @@ def research_update_run(
     default=False,
     help="Allow the worker to search, download, and process new papers within budget",
 )
+@click.option("--max-attempts", default=1, type=int, help="Maximum attempts per worker phase")
+@click.option(
+    "--phase-timeout-seconds",
+    type=float,
+    help="Fail a worker phase if it exceeds this duration",
+)
 @click.pass_context
 def research_execute_run(
     ctx: click.Context,
     run_id: str,
     actor: str,
     live_acquisition: bool,
+    max_attempts: int,
+    phase_timeout_seconds: Optional[float],
 ) -> None:
     """Execute a queued research run through the bounded worker."""
     from hal9000.db.models import init_db
     from hal9000.db.store import ResearchStore
-    from hal9000.research import BoundedResearchWorker
-    from hal9000.research.acquisition import LiveAcquisitionRunner
-    from hal9000.research.pipeline import ResearchCorpusPipeline
-    from hal9000.vector import create_embedding_provider
 
     settings = _get_settings_from_context(ctx)
     _, session_local = init_db(settings.database.url)
@@ -1594,23 +1688,14 @@ def research_execute_run(
 
     try:
         store = ResearchStore(session)
-        retrieval_provider = create_embedding_provider(
-            settings.vector.embedding_provider,
-            dimension=settings.vector.embedding_dimension,
-            model=settings.vector.embedding_model,
-        )
-        acquisition_runner = LiveAcquisitionRunner(settings, session) if live_acquisition else None
-        worker = BoundedResearchWorker(
+        worker = _build_research_worker(
             store,
-            actor=actor,
-            retrieval_provider=retrieval_provider,
-            retrieval_limit=settings.vector.retrieval_limit,
-            corpus_pipeline=ResearchCorpusPipeline(
-                store,
-                embedding_provider=retrieval_provider,
-                chunk_size=settings.processing.chunk_size,
-            ),
-            acquisition_runner=acquisition_runner,
+            settings,
+            session,
+            actor,
+            live_acquisition,
+            max_attempts,
+            phase_timeout_seconds,
         )
         result = worker.execute_run(run_id)
         session.commit()
@@ -1627,6 +1712,76 @@ def research_execute_run(
         if result.acquisition:
             console.print(f"  acquired_downloaded: {result.acquisition.papers_downloaded}")
             console.print(f"  acquired_processed: {result.acquisition.papers_processed}")
+    except Exception as exc:
+        session.commit()
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        session.close()
+
+
+@research.command("work-queue")
+@click.option("--limit", default=1, type=int, help="Maximum queued runs to execute")
+@click.option("--actor", default="hal-queue-worker", help="Worker or agent name")
+@click.option(
+    "--live-acquisition/--no-live-acquisition",
+    default=False,
+    help="Allow queued runs to search, download, and process new papers within budget",
+)
+@click.option("--max-attempts", default=1, type=int, help="Maximum attempts per worker phase")
+@click.option(
+    "--phase-timeout-seconds",
+    type=float,
+    help="Fail a worker phase if it exceeds this duration",
+)
+@click.pass_context
+def research_work_queue(
+    ctx: click.Context,
+    limit: int,
+    actor: str,
+    live_acquisition: bool,
+    max_attempts: int,
+    phase_timeout_seconds: Optional[float],
+) -> None:
+    """Execute queued research runs once for worker/scheduler deployments."""
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.queue import ResearchQueueRunner
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+
+        def worker_factory(current_store):
+            return _build_research_worker(
+                current_store,
+                settings,
+                session,
+                actor,
+                live_acquisition,
+                max_attempts,
+                phase_timeout_seconds,
+            )
+
+        results = ResearchQueueRunner(store, worker_factory).run_once(limit=limit)
+        session.commit()
+
+        table = Table(title="Queued Worker Results")
+        table.add_column("Run", style="cyan")
+        table.add_column("Status", style="green")
+        table.add_column("Result", style="magenta")
+        table.add_column("Error", style="red")
+        for result in results:
+            table.add_row(
+                result.run_id[:8],
+                result.status,
+                "succeeded" if result.succeeded else "failed",
+                result.error or "-",
+            )
+        console.print(table)
+        console.print(f"[green]Queued worker processed {len(results)} run(s).[/green]")
     except Exception as exc:
         session.commit()
         raise click.ClickException(str(exc)) from exc

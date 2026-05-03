@@ -301,6 +301,10 @@ class RunTelemetrySummarizer:
             notes.append("Run outputs have been rejected.")
         if run.status == "changes_requested":
             notes.append("A reviewer requested changes before promotion.")
+        if run.status == "cancel_requested":
+            notes.append("Run cancellation has been requested and is awaiting worker acknowledgement.")
+        if run.status == "cancelled":
+            notes.append("Run was cancelled before completion.")
         if acquisition.papers_downloaded >= budget.max_downloads and budget.max_downloads > 0:
             notes.append("Download budget was fully used; consider a larger budget for broader coverage.")
         if run.claims:

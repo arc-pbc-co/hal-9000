@@ -7,10 +7,17 @@ import pytest
 
 from hal9000.db.models import Document, ResearchOutput, init_db, utc_now
 from hal9000.db.store import ResearchStore
-from hal9000.research import BoundedResearchWorker, load_program
+from hal9000.research import (
+    BoundedResearchWorker,
+    RunCancelledError,
+    WorkerExecutionControls,
+    WorkerPhaseTimeoutError,
+    load_program,
+)
 from hal9000.research.acquisition import WorkerAcquisitionResult
 from hal9000.research.budget import BudgetExceededError
-from hal9000.research.pipeline import ResearchCorpusPipeline
+from hal9000.research.pipeline import CorpusPipelineResult, ResearchCorpusPipeline
+from hal9000.research.queue import ResearchQueueRunner
 from hal9000.vector import FakeEmbeddingProvider, VectorRepository
 
 
@@ -77,6 +84,20 @@ class FakeLLMAcquisitionRunner(FakeAcquisitionRunner):
                     }
                 )
         return self.result
+
+
+class FlakyCorpusPipeline:
+    """Pipeline that fails once before succeeding."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def execute(self, run):
+        """Fail on the first call and succeed on the second."""
+        self.calls += 1
+        if self.calls == 1:
+            raise RuntimeError("temporary corpus failure")
+        return CorpusPipelineResult()
 
 
 def test_bounded_worker_executes_queued_run(temp_directory: Path):
@@ -400,5 +421,108 @@ def test_bounded_worker_enforces_llm_call_budget(temp_directory: Path):
         assert calls[0].status == "failed"
         assert run.status == "failed"
         assert "budget.llm_calls.exceeded" in [event.event_type for event in run.events]
+    finally:
+        session.close()
+
+
+def test_bounded_worker_retries_retryable_phase_failures(temp_directory: Path):
+    """Transient phase failures should be retried before failing the run."""
+    _, session_factory = init_db(f"sqlite:///{temp_directory / 'worker_retry.db'}")
+    session = session_factory()
+
+    try:
+        repo_root = Path(__file__).resolve().parents[1]
+        program = load_program(repo_root / "templates/research/programs/literature-review.md")
+
+        store = ResearchStore(session)
+        record = store.save_program(program)
+        run = store.create_run(objective="Retry this run.", program=record)
+        pipeline = FlakyCorpusPipeline()
+
+        result = BoundedResearchWorker(
+            store,
+            actor="retry-worker",
+            corpus_pipeline=pipeline,
+            controls=WorkerExecutionControls(max_attempts=2),
+        ).execute_run(run.id)
+        session.commit()
+
+        assert result.run.status == "staged"
+        assert pipeline.calls == 2
+        assert "worker.phase.retrying" in [event.event_type for event in run.events]
+    finally:
+        session.close()
+
+
+def test_bounded_worker_marks_cancel_requested_run_cancelled(temp_directory: Path):
+    """Worker cancellation checks should move cancel-requested runs to cancelled."""
+    _, session_factory = init_db(f"sqlite:///{temp_directory / 'worker_cancel.db'}")
+    session = session_factory()
+
+    try:
+        store = ResearchStore(session)
+        run = store.create_run(objective="Cancel this run.")
+        store.update_run_status(run, "running", actor="worker")
+        store.update_run_status(run, "cancel_requested", actor="tester")
+
+        with pytest.raises(RunCancelledError):
+            BoundedResearchWorker(store, actor="cancel-worker").execute_run(run.id)
+        session.commit()
+
+        assert run.status == "cancelled"
+        assert "worker.cancelled" in [event.event_type for event in run.events]
+        assert "run.cancelled" in [event.event_type for event in run.events]
+    finally:
+        session.close()
+
+
+def test_bounded_worker_fails_phase_timeout(temp_directory: Path):
+    """Configured phase timeouts should fail the run with a timeout event."""
+    _, session_factory = init_db(f"sqlite:///{temp_directory / 'worker_timeout.db'}")
+    session = session_factory()
+
+    try:
+        store = ResearchStore(session)
+        run = store.create_run(objective="Timeout this run.")
+
+        with pytest.raises(WorkerPhaseTimeoutError):
+            BoundedResearchWorker(
+                store,
+                actor="timeout-worker",
+                controls=WorkerExecutionControls(phase_timeout_seconds=0.0),
+            ).execute_run(run.id)
+        session.commit()
+
+        assert run.status == "failed"
+        assert "worker.phase.timeout" in [event.event_type for event in run.events]
+    finally:
+        session.close()
+
+
+def test_queue_runner_executes_queued_runs(temp_directory: Path):
+    """The queue runner should execute queued runs through a worker factory."""
+    _, session_factory = init_db(f"sqlite:///{temp_directory / 'worker_queue.db'}")
+    session = session_factory()
+
+    try:
+        repo_root = Path(__file__).resolve().parents[1]
+        program = load_program(repo_root / "templates/research/programs/literature-review.md")
+
+        store = ResearchStore(session)
+        record = store.save_program(program)
+        first = store.create_run(objective="First queued run.", program=record)
+        second = store.create_run(objective="Second queued run.", program=record)
+
+        runner = ResearchQueueRunner(
+            store,
+            lambda current_store: BoundedResearchWorker(current_store, actor="queue-worker"),
+        )
+        results = runner.run_once(limit=2)
+        session.commit()
+
+        assert [result.run_id for result in results] == [second.id, first.id]
+        assert all(result.succeeded for result in results)
+        assert first.status == "staged"
+        assert second.status == "staged"
     finally:
         session.close()

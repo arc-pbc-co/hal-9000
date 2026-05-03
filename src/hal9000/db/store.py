@@ -170,6 +170,7 @@ class ResearchStore:
             "promoted",
             "rejected",
             "changes_requested",
+            "cancelled",
         }:
             run.completed_at = now
 
