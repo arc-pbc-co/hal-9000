@@ -194,13 +194,15 @@ def test_research_cli_project_program_and_run_flow(temp_directory: Path):
     assert execute_result.exit_code == 0, execute_result.output
     assert "Research run executed" in execute_result.output
     assert "status: staged" in execute_result.output
+    assert "corpus_documents: 0" in execute_result.output
     assert "retrieved_context: 0" in execute_result.output
 
     session = get_session(f"sqlite:///{db_path}")
     try:
         run = session.get(ResearchRun, run_id)
         assert run.status == "staged"
-        assert [event.sequence for event in run.events] == [1, 2, 3, 4, 5, 6, 7, 8]
+        assert [event.sequence for event in run.events] == list(range(1, 11))
         assert "retrieval.context.attached" in [event.event_type for event in run.events]
+        assert "corpus.prepared" in [event.event_type for event in run.events]
     finally:
         session.close()

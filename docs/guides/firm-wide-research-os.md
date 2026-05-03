@@ -147,7 +147,9 @@ vendor yet.
 
 HAL also has its first semantic memory loop: embedded chunks can be searched
 from the CLI, and bounded worker execution attaches top retrieved project chunks
-to staged outputs as retrieval context.
+to staged outputs as retrieval context. The first corpus pipeline can now turn
+completed document text into chunks, embeddings, first-pass claims, retrieval
+context, and reviewable outputs in one bounded worker run.
 
 ## Engineering Principles
 

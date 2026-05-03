@@ -39,7 +39,9 @@ them into the shared store, queue bounded research run records, and inspect or
 advance the run lifecycle. `execute-run` runs the first bounded worker path and
 stages required outputs plus a run report. `search-chunks` queries embedded
 document chunks through the configured embedding provider and returns the first
-semantic memory results for a project or run.
+semantic memory results for a project or run. During execution, the worker now
+prepares completed local documents into chunks, embeddings, first-pass claims,
+retrieval context, and staged outputs when corpus records are available.
 
 ### `hal acquire`
 

@@ -31,10 +31,11 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add chunk embedding records and migration support.
 - [x] Add semantic search service over chunk embeddings.
 - [x] Wire semantic retrieval context into bounded worker output staging.
+- [x] Add first corpus preparation pipeline for completed documents: chunking, embeddings, first-pass claims, retrieval, and staged outputs.
 
 ### In Progress
 
-- [ ] Connect acquisition, ingest, chunking, claim extraction, embeddings, and output generation into the worker.
+- [ ] Connect live acquisition/download execution into the worker pipeline.
 
 ### Remaining
 
@@ -86,9 +87,10 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add append-only run events.
 - [x] Add bounded worker execution for queued runs.
 - [x] Add retrieval context attachment to bounded worker execution.
+- [x] Connect completed document ingestion, chunking, first-pass claim extraction, embeddings, retrieval, and output generation into one worker flow.
 - [ ] Add budget enforcement for runtime, LLM calls, papers, and downloads.
 - [ ] Add tool-call records and cost accounting.
-- [ ] Connect acquisition, ingest, chunking, claim extraction, and output generation into the worker.
+- [ ] Connect live acquisition/search/download execution into the worker.
 - [ ] Add retry, cancellation, and timeout handling.
 - [ ] Add scheduled or queued worker process.
 
@@ -190,6 +192,7 @@ Implemented in this slice:
 - The first vector layer adds deterministic fake embeddings, `chunk_embeddings`, and pgvector-oriented migration support.
 - `VectorRepository` can search embedded chunks by cosine similarity, and `hal research search-chunks` exposes the first semantic memory query path.
 - `BoundedResearchWorker` attaches top retrieved project chunks as run context before staging contract outputs.
+- `ResearchCorpusPipeline` prepares completed documents for runs by chunking text, embedding chunks, extracting first-pass claims, and feeding outputs in the same worker execution.
 
 ## Milestone 3: Research Run Orchestrator
 
@@ -241,6 +244,6 @@ Deliverables:
 
 ## Immediate Next Tasks
 
-- Connect acquisition, ingest, chunking, claim extraction, embeddings, and output generation into one worker flow.
+- Connect live acquisition/search/download execution into the worker pipeline.
 - Add environment profiles for local, staging, and production.
 - Add budget/tool-call accounting around the worker flow.

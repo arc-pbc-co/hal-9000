@@ -277,6 +277,7 @@ class AcquisitionOrchestrator:
                 abstract=metadata.abstract,
                 summary=analysis.summary,
                 key_concepts=json.dumps(analysis.keywords),
+                findings=json.dumps(analysis.key_findings),
                 full_text=pdf_content.full_text[:100000],
                 page_count=pdf_content.page_count,
                 status="completed",

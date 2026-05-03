@@ -1244,6 +1244,7 @@ def research_execute_run(ctx: click.Context, run_id: str, actor: str) -> None:
     from hal9000.db.models import init_db
     from hal9000.db.store import ResearchStore
     from hal9000.research import BoundedResearchWorker
+    from hal9000.research.pipeline import ResearchCorpusPipeline
     from hal9000.vector import create_embedding_provider
 
     settings = _get_settings_from_context(ctx)
@@ -1262,6 +1263,11 @@ def research_execute_run(ctx: click.Context, run_id: str, actor: str) -> None:
             actor=actor,
             retrieval_provider=retrieval_provider,
             retrieval_limit=settings.vector.retrieval_limit,
+            corpus_pipeline=ResearchCorpusPipeline(
+                store,
+                embedding_provider=retrieval_provider,
+                chunk_size=settings.processing.chunk_size,
+            ),
         )
         result = worker.execute_run(run_id)
         session.commit()
@@ -1269,6 +1275,9 @@ def research_execute_run(ctx: click.Context, run_id: str, actor: str) -> None:
         console.print(f"  id: {result.run.id}")
         console.print(f"  status: {result.run.status}")
         console.print(f"  outputs: {len(result.output_ids)}")
+        console.print(f"  corpus_documents: {len(result.corpus_document_ids)}")
+        console.print(f"  corpus_chunks: {len(result.corpus_chunk_ids)}")
+        console.print(f"  corpus_claims: {len(result.corpus_claim_ids)}")
         console.print(f"  retrieved_context: {len(result.retrieval_context)}")
         if result.run_report_id:
             console.print(f"  run_report: {result.run_report_id}")

@@ -11,6 +11,7 @@ from hal9000.vector import EmbeddingProvider, VectorRepository
 
 if TYPE_CHECKING:
     from hal9000.db.store import ResearchStore
+    from hal9000.research.pipeline import ResearchCorpusPipeline
 
 
 @dataclass
@@ -21,6 +22,9 @@ class RunExecutionResult:
     output_ids: list[str]
     run_report_id: str | None
     retrieval_context: list[dict[str, object]]
+    corpus_document_ids: list[str]
+    corpus_chunk_ids: list[str]
+    corpus_claim_ids: list[str]
 
 
 class BoundedResearchWorker:
@@ -32,6 +36,7 @@ class BoundedResearchWorker:
         actor: str = "hal-worker",
         retrieval_provider: EmbeddingProvider | None = None,
         retrieval_limit: int = 5,
+        corpus_pipeline: ResearchCorpusPipeline | None = None,
     ):
         """Initialize the worker with a shared store."""
         self.store = store
@@ -39,6 +44,7 @@ class BoundedResearchWorker:
         self.output_generator = ResearchOutputGenerator(store)
         self.retrieval_provider = retrieval_provider
         self.retrieval_limit = retrieval_limit
+        self.corpus_pipeline = corpus_pipeline
 
     def execute_run(self, run_id: str) -> RunExecutionResult:
         """Execute a queued run and stage reviewable outputs."""
@@ -57,6 +63,7 @@ class BoundedResearchWorker:
                     actor=self.actor,
                 )
 
+            corpus_result = self._prepare_corpus(run)
             retrieval_context = self._build_retrieval_context(run)
             staged = self.output_generator.stage_contract_outputs(
                 run,
@@ -73,6 +80,9 @@ class BoundedResearchWorker:
                 payload={
                     "output_ids": staged.output_ids,
                     "run_report_id": report.id,
+                    "corpus_document_ids": corpus_result.document_ids,
+                    "corpus_chunk_ids": corpus_result.chunk_ids,
+                    "corpus_claim_ids": corpus_result.claim_ids,
                 },
             )
             return RunExecutionResult(
@@ -80,6 +90,9 @@ class BoundedResearchWorker:
                 output_ids=staged.output_ids,
                 run_report_id=report.id,
                 retrieval_context=retrieval_context,
+                corpus_document_ids=corpus_result.document_ids,
+                corpus_chunk_ids=corpus_result.chunk_ids,
+                corpus_claim_ids=corpus_result.claim_ids,
             )
         except Exception as exc:
             self.store.update_run_status(
@@ -90,6 +103,14 @@ class BoundedResearchWorker:
                 payload={"error_type": type(exc).__name__},
             )
             raise
+
+    def _prepare_corpus(self, run: ResearchRun):
+        """Prepare corpus records before retrieval/output generation."""
+        if self.corpus_pipeline is None:
+            from hal9000.research.pipeline import CorpusPipelineResult
+
+            return CorpusPipelineResult()
+        return self.corpus_pipeline.execute(run)
 
     def _build_retrieval_context(self, run: ResearchRun) -> list[dict[str, object]]:
         """Search prior chunk embeddings and append a retrieval event."""

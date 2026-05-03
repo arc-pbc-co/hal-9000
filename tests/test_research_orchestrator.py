@@ -7,6 +7,7 @@ import pytest
 from hal9000.db.models import Document, ResearchOutput, init_db
 from hal9000.db.store import ResearchStore
 from hal9000.research import BoundedResearchWorker, load_program
+from hal9000.research.pipeline import ResearchCorpusPipeline
 from hal9000.vector import FakeEmbeddingProvider, VectorRepository
 
 
@@ -124,5 +125,66 @@ def test_bounded_worker_attaches_retrieval_context(temp_directory: Path):
         )
         assert "Retrieved Context" in brief.content
         assert "Single crystal samples" in brief.content
+    finally:
+        session.close()
+
+
+def test_bounded_worker_prepares_corpus_before_outputs(temp_directory: Path):
+    """The worker should chunk, embed, extract claims, retrieve, and stage outputs."""
+    _, session_factory = init_db(f"sqlite:///{temp_directory / 'worker_pipeline.db'}")
+    session = session_factory()
+
+    try:
+        repo_root = Path(__file__).resolve().parents[1]
+        program = load_program(repo_root / "templates/research/programs/literature-review.md")
+
+        store = ResearchStore(session)
+        project = store.create_project(name="Worker Pipeline", slug="worker-pipeline")
+        record = store.save_program(program, project=project)
+        document = Document(
+            source_path="/papers/worker-pipeline.pdf",
+            source_type="acquisition",
+            file_hash="w" * 64,
+            title="Worker Pipeline Source",
+            findings='["Heat treatment improves creep resistance in nickel superalloys."]',
+            full_text="Heat treatment improves creep resistance in nickel superalloys.",
+            status="completed",
+        )
+        session.add(document)
+        session.flush()
+
+        run = store.create_run(
+            objective="Find creep resistance findings.",
+            project=project,
+            program=record,
+            initiated_by="test",
+        )
+        provider = FakeEmbeddingProvider(dimension=8)
+        result = BoundedResearchWorker(
+            store,
+            actor="pipeline-worker",
+            retrieval_provider=provider,
+            retrieval_limit=3,
+            corpus_pipeline=ResearchCorpusPipeline(
+                store,
+                embedding_provider=provider,
+                chunk_size=100,
+            ),
+        ).execute_run(run.id)
+        session.commit()
+
+        assert result.corpus_document_ids == [document.id]
+        assert len(result.corpus_chunk_ids) == 1
+        assert len(result.corpus_claim_ids) == 1
+        assert len(result.retrieval_context) == 1
+        assert run.status == "staged"
+
+        brief = (
+            session.query(ResearchOutput)
+            .filter_by(run_id=run.id, output_type="research_brief")
+            .one()
+        )
+        assert "Heat treatment improves creep resistance" in brief.content
+        assert "corpus.prepared" in [event.event_type for event in run.events]
     finally:
         session.close()
