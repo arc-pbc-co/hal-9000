@@ -49,6 +49,7 @@ nav:
   - Guides:
     - Getting Started: guides/getting-started.md
     - Configuration: guides/configuration.md
+    - Deployment: guides/deployment.md
     - CLI Reference: guides/cli-reference.md
     - Obsidian Integration: guides/obsidian-integration.md
     - ADAM Integration: guides/adam-integration.md

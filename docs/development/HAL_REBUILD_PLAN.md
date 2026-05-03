@@ -46,18 +46,17 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add retry, cancellation, and timeout handling for worker execution.
 - [x] Add queued worker execution command for scheduler/process-manager deployments.
 - [x] Add observability CLI/API summary for run status, queue health, tool calls, costs, failures, and worker outcomes.
+- [x] Add deployment manifests for gateway, worker, docs, Postgres, and S3-compatible object storage.
 
 ### In Progress
 
-- [ ] Add deployment manifests for API, workers, database, object store, and docs.
 - [ ] Add firm-wide export targets for ADAM, Obsidian, Markdown, JSON, and dashboards.
+- [ ] Add backup/restore plan for Postgres and object storage.
 
 ### Remaining
 
 - [ ] Add authentication, users, teams, and permissions.
 - [ ] Add review UI/API for staged outputs.
-- [ ] Add observability for run status, tool calls, cost, and failures.
-- [ ] Add deployment manifests for API, workers, database, object store, and docs.
 - [ ] Add firm-wide export targets for ADAM, Obsidian, Markdown, JSON, and dashboards.
 
 ## Master Completion Checklist
@@ -144,8 +143,8 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 ### Phase H: Deployment and Operations
 
 - [ ] Package API/gateway, worker, scheduler, and docs services.
-- [ ] Add Docker/Compose for local firmwide stack.
-- [ ] Add production deployment manifests.
+- [x] Add Docker/Compose for local firmwide stack.
+- [x] Add production deployment manifests.
 - [x] Add observability: run metrics, queue metrics, cost, errors, latency.
 - [ ] Add backup/restore plan for Postgres and object storage.
 - [ ] Add CI checks for tests, docs, migrations, and lint/type checks.
@@ -223,6 +222,7 @@ Implemented in this slice:
 - `BoundedResearchWorker` now supports bounded phase retries, cancellation acknowledgement, and phase timeout accounting.
 - `hal research work-queue` now executes queued runs once, providing the first scheduler/process-manager entry point.
 - `ResearchObservabilityService` and `hal research observe` now summarize run status counts, queue health, tool-call cost/failure state, recent worker outcomes, recent failures, and recent runs.
+- `Dockerfile` and `deploy/compose.yaml` now define the first deployable stack for gateway, queue worker, docs, Postgres/pgvector, and MinIO object storage.
 
 ## Milestone 3: Research Run Orchestrator
 
@@ -278,5 +278,5 @@ Deliverables:
 
 ## Immediate Next Tasks
 
-- Add deployment manifests for API, workers, database, object store, and docs.
 - Add firm-wide export targets for ADAM, Obsidian, Markdown, JSON, and dashboards.
+- Add backup/restore plan for Postgres and object storage.

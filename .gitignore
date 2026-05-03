@@ -153,6 +153,7 @@ test-papers/
 credentials.json
 *.pem
 *.key
+deploy/.env
 
 # Local agent orchestration artifacts
 .ralph/
