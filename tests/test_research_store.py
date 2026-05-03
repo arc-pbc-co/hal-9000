@@ -165,3 +165,36 @@ def test_store_appends_ordered_run_events_and_updates_status(temp_directory: Pat
         assert run.completed_at is not None
     finally:
         session.close()
+
+
+def test_store_records_tool_calls(temp_directory: Path):
+    """Tool calls should be durable accounting records attached to runs."""
+    _, session_factory = init_db(f"sqlite:///{temp_directory / 'tool_calls.db'}")
+    session = session_factory()
+
+    try:
+        store = ResearchStore(session)
+        run = store.create_run(objective="Acquire papers.")
+
+        call = store.start_tool_call(
+            run,
+            tool_name="acquisition.acquire",
+            actor="worker",
+            input={"topic": "superalloys", "max_papers": 2},
+        )
+        store.finish_tool_call(
+            call,
+            output={"papers_downloaded": 1, "papers_processed": 1},
+        )
+        session.commit()
+
+        calls = store.list_tool_calls(run)
+
+        assert len(calls) == 1
+        assert calls[0].sequence == 1
+        assert calls[0].status == "completed"
+        assert json.loads(calls[0].input_json)["max_papers"] == 2
+        assert json.loads(calls[0].output_json)["papers_processed"] == 1
+        assert calls[0].completed_at is not None
+    finally:
+        session.close()

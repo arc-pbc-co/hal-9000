@@ -268,6 +268,11 @@ class ResearchRun(Base):
         back_populates="run",
         order_by="ResearchRunEvent.sequence",
     )
+    tool_calls: Mapped[list["ResearchToolCall"]] = relationship(
+        "ResearchToolCall",
+        back_populates="run",
+        order_by="ResearchToolCall.sequence",
+    )
 
     def __repr__(self) -> str:
         return f"<ResearchRun(id={self.id}, status={self.status})>"
@@ -294,6 +299,33 @@ class ResearchRunEvent(Base):
 
     def __repr__(self) -> str:
         return f"<ResearchRunEvent(id={self.id}, run_id={self.run_id}, sequence={self.sequence})>"
+
+
+class ResearchToolCall(Base):
+    """Durable accounting record for a worker tool invocation."""
+
+    __tablename__ = "research_tool_calls"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    run_id: Mapped[str] = mapped_column(String(36), ForeignKey("research_runs.id"), nullable=False)
+
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    tool_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[str] = mapped_column(String(50), default="started")
+    actor: Mapped[Optional[str]] = mapped_column(String(256))
+    input_json: Mapped[Optional[str]] = mapped_column(Text)
+    output_json: Mapped[Optional[str]] = mapped_column(Text)
+    error_message: Mapped[Optional[str]] = mapped_column(Text)
+    cost_usd: Mapped[Optional[float]] = mapped_column(Float)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+    run: Mapped["ResearchRun"] = relationship("ResearchRun", back_populates="tool_calls")
+
+    def __repr__(self) -> str:
+        return f"<ResearchToolCall(id={self.id}, tool={self.tool_name}, status={self.status})>"
 
 
 class DocumentChunk(Base):

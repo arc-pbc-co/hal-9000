@@ -17,6 +17,7 @@ from hal9000.db.models import (
     ResearchProject,
     ResearchRun,
     ResearchRunEvent,
+    ResearchToolCall,
     ReviewDecision,
     utc_now,
 )
@@ -198,6 +199,59 @@ class ResearchStore:
             self.session.query(ResearchRunEvent)
             .filter_by(run_id=run.id)
             .order_by(ResearchRunEvent.sequence)
+            .all()
+        )
+
+    def start_tool_call(
+        self,
+        run: ResearchRun,
+        tool_name: str,
+        actor: Optional[str] = None,
+        input: Optional[dict[str, Any]] = None,
+    ) -> ResearchToolCall:
+        """Record the start of a worker tool call."""
+        last_call = (
+            self.session.query(ResearchToolCall)
+            .filter_by(run_id=run.id)
+            .order_by(ResearchToolCall.sequence.desc())
+            .first()
+        )
+        next_sequence = 1 if last_call is None else last_call.sequence + 1
+        call = ResearchToolCall(
+            run=run,
+            sequence=next_sequence,
+            tool_name=tool_name,
+            status="started",
+            actor=actor,
+            input_json=_json_dumps(input) if input is not None else None,
+        )
+        self.session.add(call)
+        self.session.flush()
+        return call
+
+    def finish_tool_call(
+        self,
+        tool_call: ResearchToolCall,
+        status: str = "completed",
+        output: Optional[dict[str, Any]] = None,
+        error_message: Optional[str] = None,
+        cost_usd: Optional[float] = None,
+    ) -> ResearchToolCall:
+        """Record the outcome of a worker tool call."""
+        tool_call.status = status
+        tool_call.output_json = _json_dumps(output) if output is not None else None
+        tool_call.error_message = error_message
+        tool_call.cost_usd = cost_usd
+        tool_call.completed_at = utc_now()
+        self.session.flush()
+        return tool_call
+
+    def list_tool_calls(self, run: ResearchRun) -> list[ResearchToolCall]:
+        """Return tool calls in execution order."""
+        return (
+            self.session.query(ResearchToolCall)
+            .filter_by(run_id=run.id)
+            .order_by(ResearchToolCall.sequence)
             .all()
         )
 

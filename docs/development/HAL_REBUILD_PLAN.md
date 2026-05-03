@@ -32,10 +32,13 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add semantic search service over chunk embeddings.
 - [x] Wire semantic retrieval context into bounded worker output staging.
 - [x] Add first corpus preparation pipeline for completed documents: chunking, embeddings, first-pass claims, retrieval, and staged outputs.
+- [x] Add durable tool-call accounting records for bounded worker tools.
+- [x] Add budget/tool-policy checks around live acquisition.
+- [x] Connect live acquisition/search/download execution into the worker behind `execute-run --live-acquisition`.
 
 ### In Progress
 
-- [ ] Connect live acquisition/download execution into the worker pipeline.
+- [ ] Add budget enforcement for runtime and LLM calls.
 
 ### Remaining
 
@@ -88,9 +91,10 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add bounded worker execution for queued runs.
 - [x] Add retrieval context attachment to bounded worker execution.
 - [x] Connect completed document ingestion, chunking, first-pass claim extraction, embeddings, retrieval, and output generation into one worker flow.
-- [ ] Add budget enforcement for runtime, LLM calls, papers, and downloads.
-- [ ] Add tool-call records and cost accounting.
-- [ ] Connect live acquisition/search/download execution into the worker.
+- [x] Add budget enforcement for acquisition papers/downloads.
+- [x] Add tool-call records and first-pass cost accounting fields.
+- [x] Connect live acquisition/search/download execution into the worker.
+- [ ] Add budget enforcement for runtime and LLM calls.
 - [ ] Add retry, cancellation, and timeout handling.
 - [ ] Add scheduled or queued worker process.
 
@@ -193,6 +197,8 @@ Implemented in this slice:
 - `VectorRepository` can search embedded chunks by cosine similarity, and `hal research search-chunks` exposes the first semantic memory query path.
 - `BoundedResearchWorker` attaches top retrieved project chunks as run context before staging contract outputs.
 - `ResearchCorpusPipeline` prepares completed documents for runs by chunking text, embedding chunks, extracting first-pass claims, and feeding outputs in the same worker execution.
+- `ResearchToolCall` records now track auditable worker tool invocations, starting with live acquisition.
+- `BoundedResearchWorker` can run live acquisition through `hal research execute-run --live-acquisition`, constrained by run budget and tool policy.
 
 ## Milestone 3: Research Run Orchestrator
 
@@ -244,6 +250,5 @@ Deliverables:
 
 ## Immediate Next Tasks
 
-- Connect live acquisition/search/download execution into the worker pipeline.
 - Add environment profiles for local, staging, and production.
-- Add budget/tool-call accounting around the worker flow.
+- Add runtime and LLM-call budget enforcement around the worker flow.

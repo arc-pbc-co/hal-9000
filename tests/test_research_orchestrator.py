@@ -7,8 +7,27 @@ import pytest
 from hal9000.db.models import Document, ResearchOutput, init_db
 from hal9000.db.store import ResearchStore
 from hal9000.research import BoundedResearchWorker, load_program
+from hal9000.research.acquisition import WorkerAcquisitionResult
 from hal9000.research.pipeline import ResearchCorpusPipeline
 from hal9000.vector import FakeEmbeddingProvider, VectorRepository
+
+
+class FakeAcquisitionRunner:
+    """Deterministic acquisition runner for worker tests."""
+
+    def __init__(self, result: WorkerAcquisitionResult | None = None):
+        self.result = result or WorkerAcquisitionResult(
+            papers_found=1,
+            papers_downloaded=1,
+            papers_processed=1,
+            document_ids=["doc-1"],
+        )
+        self.calls: list[tuple[str, int]] = []
+
+    def acquire(self, topic: str, max_papers: int) -> WorkerAcquisitionResult:
+        """Record a fake acquisition call."""
+        self.calls.append((topic, max_papers))
+        return self.result
 
 
 def test_bounded_worker_executes_queued_run(temp_directory: Path):
@@ -186,5 +205,82 @@ def test_bounded_worker_prepares_corpus_before_outputs(temp_directory: Path):
         )
         assert "Heat treatment improves creep resistance" in brief.content
         assert "corpus.prepared" in [event.event_type for event in run.events]
+    finally:
+        session.close()
+
+
+def test_bounded_worker_runs_acquisition_with_tool_call_accounting(temp_directory: Path):
+    """The worker should run allowed acquisition through durable tool calls."""
+    _, session_factory = init_db(f"sqlite:///{temp_directory / 'worker_acquisition.db'}")
+    session = session_factory()
+
+    try:
+        repo_root = Path(__file__).resolve().parents[1]
+        program = load_program(repo_root / "templates/research/programs/literature-review.md")
+
+        store = ResearchStore(session)
+        project = store.create_project(name="Worker Acquisition", slug="worker-acquisition")
+        record = store.save_program(program, project=project)
+        run = store.create_run(
+            objective="Acquire creep resistance papers.",
+            project=project,
+            program=record,
+            budget={"max_papers": 4, "max_downloads": 2},
+            tool_policy={"allowed_tools": ["search", "acquire", "ingest", "rlm"]},
+        )
+        acquisition_runner = FakeAcquisitionRunner()
+
+        result = BoundedResearchWorker(
+            store,
+            actor="acquisition-worker",
+            acquisition_runner=acquisition_runner,
+        ).execute_run(run.id)
+        session.commit()
+
+        calls = store.list_tool_calls(run)
+
+        assert acquisition_runner.calls == [("Acquire creep resistance papers.", 2)]
+        assert result.acquisition is not None
+        assert result.acquisition.papers_processed == 1
+        assert len(calls) == 1
+        assert calls[0].tool_name == "acquisition.acquire"
+        assert calls[0].status == "completed"
+        assert "tool.acquisition.completed" in [event.event_type for event in run.events]
+    finally:
+        session.close()
+
+
+def test_bounded_worker_skips_acquisition_when_tool_policy_disallows_it(
+    temp_directory: Path,
+):
+    """Tool policy should prevent live acquisition from running."""
+    _, session_factory = init_db(f"sqlite:///{temp_directory / 'worker_acquisition_skip.db'}")
+    session = session_factory()
+
+    try:
+        repo_root = Path(__file__).resolve().parents[1]
+        program = load_program(repo_root / "templates/research/programs/literature-review.md")
+
+        store = ResearchStore(session)
+        record = store.save_program(program)
+        run = store.create_run(
+            objective="Do not acquire.",
+            program=record,
+            budget={"max_papers": 4, "max_downloads": 2},
+            tool_policy={"allowed_tools": ["ingest"]},
+        )
+        acquisition_runner = FakeAcquisitionRunner()
+
+        result = BoundedResearchWorker(
+            store,
+            actor="acquisition-worker",
+            acquisition_runner=acquisition_runner,
+        ).execute_run(run.id)
+        session.commit()
+
+        assert acquisition_runner.calls == []
+        assert result.acquisition is None
+        assert store.list_tool_calls(run) == []
+        assert "acquisition.skipped" in [event.event_type for event in run.events]
     finally:
         session.close()

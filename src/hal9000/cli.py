@@ -1238,12 +1238,23 @@ def research_update_run(
 @research.command("execute-run")
 @click.argument("run_id")
 @click.option("--actor", default="hal-worker", help="Worker or agent name")
+@click.option(
+    "--live-acquisition/--no-live-acquisition",
+    default=False,
+    help="Allow the worker to search, download, and process new papers within budget",
+)
 @click.pass_context
-def research_execute_run(ctx: click.Context, run_id: str, actor: str) -> None:
+def research_execute_run(
+    ctx: click.Context,
+    run_id: str,
+    actor: str,
+    live_acquisition: bool,
+) -> None:
     """Execute a queued research run through the bounded worker."""
     from hal9000.db.models import init_db
     from hal9000.db.store import ResearchStore
     from hal9000.research import BoundedResearchWorker
+    from hal9000.research.acquisition import LiveAcquisitionRunner
     from hal9000.research.pipeline import ResearchCorpusPipeline
     from hal9000.vector import create_embedding_provider
 
@@ -1258,6 +1269,7 @@ def research_execute_run(ctx: click.Context, run_id: str, actor: str) -> None:
             dimension=settings.vector.embedding_dimension,
             model=settings.vector.embedding_model,
         )
+        acquisition_runner = LiveAcquisitionRunner(settings, session) if live_acquisition else None
         worker = BoundedResearchWorker(
             store,
             actor=actor,
@@ -1268,6 +1280,7 @@ def research_execute_run(ctx: click.Context, run_id: str, actor: str) -> None:
                 embedding_provider=retrieval_provider,
                 chunk_size=settings.processing.chunk_size,
             ),
+            acquisition_runner=acquisition_runner,
         )
         result = worker.execute_run(run_id)
         session.commit()
@@ -1281,6 +1294,9 @@ def research_execute_run(ctx: click.Context, run_id: str, actor: str) -> None:
         console.print(f"  retrieved_context: {len(result.retrieval_context)}")
         if result.run_report_id:
             console.print(f"  run_report: {result.run_report_id}")
+        if result.acquisition:
+            console.print(f"  acquired_downloaded: {result.acquisition.papers_downloaded}")
+            console.print(f"  acquired_processed: {result.acquisition.papers_processed}")
     except Exception as exc:
         session.commit()
         raise click.ClickException(str(exc)) from exc

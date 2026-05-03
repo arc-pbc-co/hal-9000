@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from hal9000.db.models import ResearchRun
+from hal9000.research.acquisition import AcquisitionRunner, WorkerAcquisitionResult
+from hal9000.research.budget import BudgetExceededError, RunBudgetTracker
 from hal9000.research.outputs import ResearchOutputGenerator
 from hal9000.vector import EmbeddingProvider, VectorRepository
 
@@ -25,6 +27,7 @@ class RunExecutionResult:
     corpus_document_ids: list[str]
     corpus_chunk_ids: list[str]
     corpus_claim_ids: list[str]
+    acquisition: WorkerAcquisitionResult | None = None
 
 
 class BoundedResearchWorker:
@@ -37,6 +40,7 @@ class BoundedResearchWorker:
         retrieval_provider: EmbeddingProvider | None = None,
         retrieval_limit: int = 5,
         corpus_pipeline: ResearchCorpusPipeline | None = None,
+        acquisition_runner: AcquisitionRunner | None = None,
     ):
         """Initialize the worker with a shared store."""
         self.store = store
@@ -45,6 +49,7 @@ class BoundedResearchWorker:
         self.retrieval_provider = retrieval_provider
         self.retrieval_limit = retrieval_limit
         self.corpus_pipeline = corpus_pipeline
+        self.acquisition_runner = acquisition_runner
 
     def execute_run(self, run_id: str) -> RunExecutionResult:
         """Execute a queued run and stage reviewable outputs."""
@@ -63,6 +68,7 @@ class BoundedResearchWorker:
                     actor=self.actor,
                 )
 
+            acquisition_result = self._run_acquisition(run)
             corpus_result = self._prepare_corpus(run)
             retrieval_context = self._build_retrieval_context(run)
             staged = self.output_generator.stage_contract_outputs(
@@ -83,6 +89,9 @@ class BoundedResearchWorker:
                     "corpus_document_ids": corpus_result.document_ids,
                     "corpus_chunk_ids": corpus_result.chunk_ids,
                     "corpus_claim_ids": corpus_result.claim_ids,
+                    "acquisition": acquisition_result.to_dict()
+                    if acquisition_result is not None
+                    else None,
                 },
             )
             return RunExecutionResult(
@@ -93,6 +102,7 @@ class BoundedResearchWorker:
                 corpus_document_ids=corpus_result.document_ids,
                 corpus_chunk_ids=corpus_result.chunk_ids,
                 corpus_claim_ids=corpus_result.claim_ids,
+                acquisition=acquisition_result,
             )
         except Exception as exc:
             self.store.update_run_status(
@@ -103,6 +113,71 @@ class BoundedResearchWorker:
                 payload={"error_type": type(exc).__name__},
             )
             raise
+
+    def _run_acquisition(self, run: ResearchRun) -> WorkerAcquisitionResult | None:
+        """Run live acquisition when configured and allowed by budget."""
+        if self.acquisition_runner is None:
+            return None
+
+        tracker = RunBudgetTracker(run)
+        try:
+            max_papers = tracker.require_acquisition_budget()
+        except BudgetExceededError as exc:
+            self.store.append_run_event(
+                run,
+                event_type="acquisition.skipped",
+                message=str(exc),
+                actor=self.actor,
+                payload={"reason": type(exc).__name__},
+            )
+            return None
+
+        tool_call = self.store.start_tool_call(
+            run,
+            tool_name="acquisition.acquire",
+            actor=self.actor,
+            input={"topic": run.objective, "max_papers": max_papers},
+        )
+        self.store.append_run_event(
+            run,
+            event_type="tool.acquisition.started",
+            message="Live acquisition started.",
+            actor=self.actor,
+            payload={"tool_call_id": tool_call.id, "max_papers": max_papers},
+        )
+        try:
+            result = self.acquisition_runner.acquire(run.objective, max_papers=max_papers)
+        except Exception as exc:
+            self.store.finish_tool_call(
+                tool_call,
+                status="failed",
+                error_message=str(exc),
+            )
+            self.store.append_run_event(
+                run,
+                event_type="tool.acquisition.failed",
+                message=str(exc),
+                actor=self.actor,
+                payload={"tool_call_id": tool_call.id, "error_type": type(exc).__name__},
+            )
+            raise
+
+        self.store.finish_tool_call(
+            tool_call,
+            status="completed",
+            output=result.to_dict(),
+        )
+        self.store.append_run_event(
+            run,
+            event_type="tool.acquisition.completed",
+            message=(
+                f"Live acquisition completed: {result.papers_downloaded} downloaded, "
+                f"{result.papers_processed} processed."
+            ),
+            actor=self.actor,
+            payload={"tool_call_id": tool_call.id, **result.to_dict()},
+        )
+        return result
 
     def _prepare_corpus(self, run: ResearchRun):
         """Prepare corpus records before retrieval/output generation."""

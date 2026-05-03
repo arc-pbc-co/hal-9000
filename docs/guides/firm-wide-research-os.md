@@ -151,6 +151,11 @@ to staged outputs as retrieval context. The first corpus pipeline can now turn
 completed document text into chunks, embeddings, first-pass claims, retrieval
 context, and reviewable outputs in one bounded worker run.
 
+Live acquisition can now be invoked from bounded worker execution with explicit
+budget and tool-policy checks. Acquisition runs are recorded as durable tool-call
+records so searches, downloads, and processing are inspectable alongside run
+events.
+
 ## Engineering Principles
 
 - Store facts once and generate many views from the canonical store.

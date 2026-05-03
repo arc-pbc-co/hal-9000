@@ -16,6 +16,7 @@ from hal9000.db.models import (
     ResearchProgramRecord,
     ResearchProject,
     ResearchRun,
+    ResearchToolCall,
     ReviewDecision,
     init_db,
     normalize_database_url,
@@ -58,6 +59,7 @@ class TestSharedResearchStoreModels:
         assert "research_programs" in table_names
         assert "research_runs" in table_names
         assert "research_run_events" in table_names
+        assert "research_tool_calls" in table_names
         assert "document_chunks" in table_names
         assert "chunk_embeddings" in table_names
         assert "extracted_claims" in table_names
@@ -89,6 +91,12 @@ class TestSharedResearchStoreModels:
                 objective=program.objective,
                 budget_json=json.dumps({"max_papers": 25}),
             )
+            tool_call = ResearchToolCall(
+                run=run,
+                sequence=1,
+                tool_name="acquisition.acquire",
+                status="completed",
+            )
             output = ResearchOutput(
                 project=project,
                 run=run,
@@ -104,6 +112,7 @@ class TestSharedResearchStoreModels:
             )
 
             session.add(project)
+            session.add(tool_call)
             session.add(decision)
             session.commit()
 
@@ -113,6 +122,7 @@ class TestSharedResearchStoreModels:
             assert saved.runs[0].status == "queued"
             assert saved.outputs[0].review_decisions[0].decision == "promoted"
             assert saved.outputs[0].run.program.name == "Creep Review"
+            assert saved.runs[0].tool_calls[0].tool_name == "acquisition.acquire"
         finally:
             session.close()
 

@@ -32,6 +32,7 @@ hal research search-chunks "single crystal creep resistance" --project-slug supe
 hal research log-run-event <run-id> --event-type tool.search
 hal research update-run <run-id> --status running
 hal research execute-run <run-id> --actor hal-worker
+hal research execute-run <run-id> --actor hal-worker --live-acquisition
 ```
 
 These commands create and validate autoresearch-style research programs, persist
@@ -42,6 +43,9 @@ document chunks through the configured embedding provider and returns the first
 semantic memory results for a project or run. During execution, the worker now
 prepares completed local documents into chunks, embeddings, first-pass claims,
 retrieval context, and staged outputs when corpus records are available.
+`--live-acquisition` lets the worker search, download, and process new papers
+within the run's paper/download budget and tool policy; each live acquisition
+call is recorded as a durable tool-call record.
 
 ### `hal acquire`
 
