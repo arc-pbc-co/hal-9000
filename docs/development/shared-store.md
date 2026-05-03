@@ -26,6 +26,10 @@ hal research queue-run \
 hal research runs --project-slug superalloys
 hal research run-log <run-id>
 hal research run-summary <run-id>
+hal research review-run <run-id> \
+  --decision request-changes \
+  --reviewer head-of-engineering@example.com \
+  --rationale "Add stronger citation coverage."
 hal research log-run-event <run-id> \
   --event-type tool.search \
   --message "Search started."
@@ -95,9 +99,11 @@ session.commit()
 - Mirror per-paper acquisition outcomes into ordered run events.
 - Summarize run telemetry for reviewers across events, tool calls, acquisition
   outcomes, budgets, warnings, outputs, and reviewer notes.
+- Record run-level review decisions across every staged output and advance runs
+  to `promoted`, `rejected`, or `changes_requested`.
 - Provide CLI commands for creating projects, saving programs, queuing runs,
-  listing runs, inspecting run logs/summaries, appending events, and advancing
-  run state.
+  listing runs, inspecting run logs/summaries, reviewing staged runs, appending
+  events, and advancing run state.
 - Stage generated research outputs.
 - Record review decisions and mirror them onto output status.
 - Persist canonical document chunks.

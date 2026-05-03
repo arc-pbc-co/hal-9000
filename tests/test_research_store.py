@@ -3,7 +3,9 @@
 import json
 from pathlib import Path
 
-from hal9000.db.models import Document, init_db
+import pytest
+
+from hal9000.db.models import Document, ReviewDecision, init_db
 from hal9000.db.store import ClaimEvidence, ResearchStore
 from hal9000.research import load_program, render_program_template
 
@@ -196,5 +198,64 @@ def test_store_records_tool_calls(temp_directory: Path):
         assert json.loads(calls[0].input_json)["max_papers"] == 2
         assert json.loads(calls[0].output_json)["papers_processed"] == 1
         assert calls[0].completed_at is not None
+    finally:
+        session.close()
+
+
+@pytest.mark.parametrize(
+    ("input_decision", "stored_decision"),
+    [
+        ("promote", "promoted"),
+        ("reject", "rejected"),
+        ("request-changes", "changes_requested"),
+    ],
+)
+def test_store_reviews_all_staged_run_outputs(
+    temp_directory: Path,
+    input_decision: str,
+    stored_decision: str,
+):
+    """Run review should record output decisions and advance run lifecycle."""
+    _, session_factory = init_db(f"sqlite:///{temp_directory / f'run_review_{stored_decision}.db'}")
+    session = session_factory()
+
+    try:
+        store = ResearchStore(session)
+        project = store.create_project(name="Review", slug="review")
+        run = store.create_run(objective="Review staged outputs.", project=project)
+        store.update_run_status(run, "staged", actor="worker")
+        first = store.stage_output(
+            title="Brief",
+            output_type="research_brief",
+            project=project,
+            run=run,
+            content="# Brief",
+        )
+        second = store.stage_output(
+            title="Questions",
+            output_type="open_questions",
+            project=project,
+            run=run,
+            content="# Questions",
+        )
+
+        result = store.review_run_outputs(
+            run,
+            decision=input_decision,
+            reviewer="reviewer@example.com",
+            rationale="Add stronger source coverage.",
+        )
+        session.commit()
+
+        assert result.run.status == stored_decision
+        assert result.event.event_type == f"run.{stored_decision}"
+        assert first.status == stored_decision
+        assert second.status == stored_decision
+        assert len(result.decisions) == 2
+        assert session.query(ReviewDecision).count() == 2
+        payload = json.loads(result.event.payload_json)
+        assert payload["decision"] == stored_decision
+        assert payload["reviewer"] == "reviewer@example.com"
+        assert payload["output_ids"] == [first.id, second.id]
     finally:
         session.close()

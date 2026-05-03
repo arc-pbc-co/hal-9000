@@ -44,6 +44,15 @@ class ClaimEvidence:
     provenance: Optional[dict[str, Any]] = None
 
 
+@dataclass
+class RunReviewResult:
+    """Review decisions and lifecycle event recorded for a run review."""
+
+    run: ResearchRun
+    decisions: list[ReviewDecision]
+    event: ResearchRunEvent
+
+
 class ResearchStore:
     """Small repository API over the shared research store models."""
 
@@ -154,7 +163,14 @@ class ResearchStore:
         run.updated_at = now
         if status == "running" and run.started_at is None:
             run.started_at = now
-        if status in {"staged", "completed", "failed", "promoted", "rejected"}:
+        if status in {
+            "staged",
+            "completed",
+            "failed",
+            "promoted",
+            "rejected",
+            "changes_requested",
+        }:
             run.completed_at = now
 
         return self.append_run_event(
@@ -370,3 +386,66 @@ class ResearchStore:
         self.session.add(review)
         self.session.flush()
         return review
+
+    def review_run_outputs(
+        self,
+        run: ResearchRun,
+        decision: str,
+        reviewer: Optional[str] = None,
+        rationale: Optional[str] = None,
+    ) -> RunReviewResult:
+        """Record a reviewer decision for every staged output on a run."""
+        normalized_decision = _normalize_review_decision(decision)
+        if run.status != "staged":
+            raise ValueError(f"Only staged runs can be reviewed; current status is {run.status}")
+        if not run.outputs:
+            raise ValueError("Cannot review a run with no staged outputs")
+
+        decisions = [
+            self.record_review_decision(
+                output,
+                decision=normalized_decision,
+                reviewer=reviewer,
+                rationale=rationale,
+            )
+            for output in run.outputs
+        ]
+        event = self.update_run_status(
+            run,
+            status=normalized_decision,
+            message=_review_message(normalized_decision),
+            actor=reviewer,
+            payload={
+                "decision": normalized_decision,
+                "reviewer": reviewer,
+                "rationale": rationale,
+                "output_ids": [output.id for output in run.outputs],
+                "review_decision_ids": [decision.id for decision in decisions],
+            },
+        )
+        return RunReviewResult(run=run, decisions=decisions, event=event)
+
+
+def _normalize_review_decision(decision: str) -> str:
+    normalized = decision.strip().lower().replace("-", "_")
+    aliases = {
+        "promote": "promoted",
+        "promoted": "promoted",
+        "reject": "rejected",
+        "rejected": "rejected",
+        "request_changes": "changes_requested",
+        "changes_requested": "changes_requested",
+    }
+    if normalized not in aliases:
+        supported = ", ".join(sorted({"promote", "reject", "request-changes"}))
+        raise ValueError(f"Unsupported review decision: {decision}. Supported values: {supported}")
+    return aliases[normalized]
+
+
+def _review_message(decision: str) -> str:
+    messages = {
+        "promoted": "Run outputs promoted.",
+        "rejected": "Run outputs rejected.",
+        "changes_requested": "Run output changes requested.",
+    }
+    return messages[decision]

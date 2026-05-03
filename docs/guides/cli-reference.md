@@ -30,6 +30,9 @@ hal research runs --project-slug superalloys
 hal research run-log <run-id>
 hal research run-summary <run-id>
 hal research run-summary <run-id> --json
+hal research review-run <run-id> --decision promote --reviewer reviewer@example.com
+hal research review-run <run-id> --decision reject --reviewer reviewer@example.com
+hal research review-run <run-id> --decision request-changes --reviewer reviewer@example.com
 hal research search-chunks "single crystal creep resistance" --project-slug superalloys
 hal research log-run-event <run-id> --event-type tool.search
 hal research update-run <run-id> --status running
@@ -53,6 +56,8 @@ plus per-paper `acquisition.paper.*` outcomes into the run log.
 `run-summary` condenses the durable event log, tool calls, acquisition outcomes,
 budget usage, warnings, staged outputs, and reviewer notes into a compact review
 view. Use `--json` when feeding dashboards or a future review UI.
+`review-run` records a reviewer decision for every staged output on the run and
+advances the run to `promoted`, `rejected`, or `changes_requested`.
 
 ### `hal acquire`
 

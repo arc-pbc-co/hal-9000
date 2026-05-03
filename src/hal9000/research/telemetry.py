@@ -295,6 +295,12 @@ class RunTelemetrySummarizer:
             notes.append("No staged outputs are available for review yet.")
         if run.status == "staged":
             notes.append("Run is staged and ready for human review.")
+        if run.status == "promoted":
+            notes.append("Run outputs have been promoted.")
+        if run.status == "rejected":
+            notes.append("Run outputs have been rejected.")
+        if run.status == "changes_requested":
+            notes.append("A reviewer requested changes before promotion.")
         if acquisition.papers_downloaded >= budget.max_downloads and budget.max_downloads > 0:
             notes.append("Download budget was fully used; consider a larger budget for broader coverage.")
         if run.claims:

@@ -1231,6 +1231,57 @@ def _render_run_summary(summary) -> None:
         console.print(f"  - {note}")
 
 
+@research.command("review-run")
+@click.argument("run_id")
+@click.option(
+    "--decision",
+    required=True,
+    type=click.Choice(["promote", "reject", "request-changes"]),
+    help="Reviewer decision for all staged outputs on the run",
+)
+@click.option("--reviewer", help="Reviewer name or email")
+@click.option("--rationale", help="Review rationale or requested changes")
+@click.pass_context
+def research_review_run(
+    ctx: click.Context,
+    run_id: str,
+    decision: str,
+    reviewer: Optional[str],
+    rationale: Optional[str],
+) -> None:
+    """Promote, reject, or request changes for staged run outputs."""
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        run = store.get_run(run_id)
+        if run is None:
+            raise click.ClickException(f"Research run not found: {run_id}")
+
+        result = store.review_run_outputs(
+            run,
+            decision=decision,
+            reviewer=reviewer,
+            rationale=rationale,
+        )
+        session.commit()
+        console.print("[green]Research run reviewed.[/green]")
+        console.print(f"  id: {result.run.id}")
+        console.print(f"  status: {result.run.status}")
+        console.print(f"  outputs_reviewed: {len(result.decisions)}")
+        console.print(f"  event: {result.event.event_type} #{result.event.sequence}")
+    except Exception as exc:
+        session.rollback()
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        session.close()
+
+
 @research.command("search-chunks")
 @click.argument("query_text")
 @click.option("--project-slug", help="Limit search to chunks attached to runs in a project")
@@ -1358,7 +1409,18 @@ def research_log_run_event(
 @click.option(
     "--status",
     required=True,
-    type=click.Choice(["queued", "running", "staged", "completed", "failed", "promoted", "rejected"]),
+    type=click.Choice(
+        [
+            "queued",
+            "running",
+            "staged",
+            "completed",
+            "failed",
+            "promoted",
+            "rejected",
+            "changes_requested",
+        ]
+    ),
     help="New run status",
 )
 @click.option("--message", help="Human-readable lifecycle message")

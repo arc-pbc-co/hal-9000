@@ -40,11 +40,12 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add acquisition progress telemetry events during live worker acquisition.
 - [x] Add per-paper acquisition telemetry for searched, downloaded, processed, skipped, and failed papers.
 - [x] Add reviewer-facing run telemetry summaries over events, tool calls, acquisition outcomes, budgets, warnings, and staged outputs.
+- [x] Add review workflow commands/API for promote, reject, and request changes.
 
 ### In Progress
 
-- [ ] Add review workflow commands/API: promote, reject, and request changes.
 - [ ] Add environment profiles for local, staging, and production.
+- [ ] Add retry, cancellation, and timeout handling.
 
 ### Remaining
 
@@ -120,7 +121,7 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 ### Phase F: Collaboration and Review
 
 - [x] Add staged outputs and review decisions in the data model.
-- [ ] Add review workflow commands/API: promote, reject, request changes.
+- [x] Add review workflow commands/API: promote, reject, request changes.
 - [ ] Add comments and annotations on outputs and claims.
 - [ ] Add collections, saved searches, and shared project views.
 - [ ] Add notification hooks for review-ready runs.
@@ -211,6 +212,7 @@ Implemented in this slice:
 - Live acquisition emits `acquisition.progress` run events for search, download, and processing stages.
 - Acquisition results now include a per-paper event ledger, and workers mirror those into `acquisition.paper.*` run events.
 - `RunTelemetrySummarizer` and `hal research run-summary` now provide a compact reviewer view over run events, tool calls, acquisition outcomes, budget usage, warnings, staged outputs, and reviewer notes.
+- `ResearchStore.review_run_outputs` and `hal research review-run` now record reviewer decisions across staged outputs and advance runs to `promoted`, `rejected`, or `changes_requested`.
 
 ## Milestone 3: Research Run Orchestrator
 
@@ -233,6 +235,8 @@ stateDiagram-v2
   running --> failed
   staged --> promoted
   staged --> rejected
+  staged --> changes_requested
+  changes_requested --> queued
   promoted --> [*]
   rejected --> [*]
   failed --> [*]
@@ -251,16 +255,16 @@ Deliverables:
 
 ## Milestone 5: Collaboration and Review
 
-Status: planned.
+Status: started.
 
 Deliverables:
 
 - Add shared projects and collections.
-- Add reviewer workflow for staged outputs.
+- Add reviewer workflow for staged outputs. Initial CLI/API support exists for promote, reject, and request changes.
 - Add comments, annotations, and output version history.
 - Add export targets for ADAM, Obsidian, Markdown, JSON, and dashboards.
 
 ## Immediate Next Tasks
 
-- Add review workflow commands/API: promote, reject, and request changes.
 - Add environment profiles for local, staging, and production.
+- Add retry, cancellation, and timeout handling.

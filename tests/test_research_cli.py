@@ -239,3 +239,34 @@ def test_research_cli_project_program_and_run_flow(temp_directory: Path):
         assert "corpus.prepared" in [event.event_type for event in run.events]
     finally:
         session.close()
+
+    review_result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(config_path),
+            "research",
+            "review-run",
+            run_id,
+            "--decision",
+            "promote",
+            "--reviewer",
+            "reviewer@example.com",
+            "--rationale",
+            "Ready for sharing.",
+        ],
+        obj={},
+    )
+    assert review_result.exit_code == 0, review_result.output
+    assert "Research run reviewed" in review_result.output
+    assert "status: promoted" in review_result.output
+    assert "outputs_reviewed: 4" in review_result.output
+
+    session = get_session(f"sqlite:///{db_path}")
+    try:
+        run = session.get(ResearchRun, run_id)
+        assert run.status == "promoted"
+        assert [output.status for output in run.outputs] == ["promoted"] * 4
+        assert run.events[-1].event_type == "run.promoted"
+    finally:
+        session.close()
