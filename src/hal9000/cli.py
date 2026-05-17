@@ -796,7 +796,10 @@ def gateway_http(
 
     settings = _get_settings_from_context(ctx)
     console.print(f"[cyan]Starting app gateway on[/cyan] [bold]http://{host}:{port}[/bold]")
-    console.print("[dim]Routes: GET /health, POST /slack/command, POST /slack/action[/dim]")
+    console.print(
+        "[dim]Routes: GET /ui, GET /health, GET /ready, POST /slack/command, "
+        "POST /slack/action, POST /slack/event, POST /sheets/writeback[/dim]"
+    )
     console.print("[dim]Press Ctrl+C to stop the app gateway[/dim]")
     try:
         run_gateway_http_server(settings, host, port, slack_signing_secret)
@@ -810,6 +813,126 @@ def gateway_http(
 def research(ctx: click.Context) -> None:
     """Research program commands."""
     pass
+
+
+@cli.group()
+@click.pass_context
+def release(ctx: click.Context) -> None:
+    """Release automation commands."""
+    pass
+
+
+@release.command("changelog")
+@click.option("--version", required=True, help="Release version, for example 0.1.0")
+@click.option(
+    "--change",
+    "changes",
+    multiple=True,
+    help="Changelog bullet; repeat for multiple bullets. Defaults to recent git subjects.",
+)
+@click.option("--date", "release_date", help="Release date in YYYY-MM-DD format")
+@click.option(
+    "--path",
+    "changelog_path",
+    type=click.Path(path_type=Path),
+    default=Path("CHANGELOG.md"),
+    show_default=True,
+    help="Changelog file to update",
+)
+@click.option("--dry-run", is_flag=True, help="Print the updated changelog without writing it")
+def release_changelog(
+    version: str,
+    changes: tuple[str, ...],
+    release_date: Optional[str],
+    changelog_path: Path,
+    dry_run: bool,
+) -> None:
+    """Insert a generated release entry into CHANGELOG.md."""
+    from datetime import date
+
+    from hal9000.release import git_changelog_changes, update_changelog_file, update_changelog_text
+
+    parsed_date = date.fromisoformat(release_date) if release_date else None
+    bullets = list(changes) or git_changelog_changes()
+    if not bullets:
+        raise click.ClickException("No changelog changes supplied and no git commits found")
+
+    if dry_run:
+        existing = changelog_path.read_text() if changelog_path.exists() else ""
+        click.echo(
+            update_changelog_text(
+                existing,
+                version=version,
+                changes=bullets,
+                release_date=parsed_date,
+            )
+        )
+        return
+
+    update_changelog_file(
+        changelog_path,
+        version=version,
+        changes=bullets,
+        release_date=parsed_date,
+    )
+    console.print(f"[green]Updated changelog:[/green] {changelog_path}")
+
+
+@release.command("validate-staging")
+@click.option("--project-slug", default="hal-staging-demo", show_default=True)
+@click.option("--reviewer", default="reviewer@example.com", show_default=True)
+@click.option("--contributor", default="researcher@example.com", show_default=True)
+@click.option("--owner", default="owner@example.com", show_default=True)
+@click.option("--json", "as_json", is_flag=True, help="Emit validation result as JSON")
+@click.pass_context
+def release_validate_staging(
+    ctx: click.Context,
+    project_slug: str,
+    reviewer: str,
+    contributor: str,
+    owner: str,
+    as_json: bool,
+) -> None:
+    """Seed and validate the staging demo walkthrough."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.demo_validation import StagingDemoValidator
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        result = StagingDemoValidator(ResearchStore(session)).validate(
+            project_slug=project_slug,
+            reviewer_email=reviewer,
+            contributor_email=contributor,
+            owner_email=owner,
+        )
+        session.commit()
+    except Exception as exc:
+        session.rollback()
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        session.close()
+
+    payload = result.to_dict()
+    if as_json:
+        click.echo(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        table = Table(title="Staging Demo Validation")
+        table.add_column("Check", style="cyan")
+        table.add_column("Status", style="green")
+        for name, passed in result.checks.items():
+            table.add_row(name, "passed" if passed else "failed")
+        console.print(table)
+        console.print(f"[cyan]Project:[/cyan] {result.project_slug}")
+        console.print(f"[cyan]Run:[/cyan] {result.run_id}")
+        console.print(f"[cyan]Passed:[/cyan] {str(result.passed).lower()}")
+    if not result.passed:
+        raise click.ClickException("Staging demo validation failed")
 
 
 @research.command("init-program")
@@ -1567,14 +1690,18 @@ def research_harden_corpus(
 
 @research.command("dedupe-report")
 @click.option("--created-by", help="Actor creating the report")
+@click.option("--claims", is_flag=True, help="Create a claim-level duplicate report instead of a document report")
+@click.option("--run-id", help="Limit claim duplicate reporting to one research run")
 @click.option("--json", "as_json", is_flag=True, help="Emit the report as JSON")
 @click.pass_context
 def research_dedupe_report(
     ctx: click.Context,
     created_by: Optional[str],
+    claims: bool,
+    run_id: Optional[str],
     as_json: bool,
 ) -> None:
-    """Create a persisted duplicate-source report for corpus curation."""
+    """Create a persisted duplicate-source or duplicate-claim report."""
     import json
 
     from hal9000.db.models import init_db
@@ -1587,7 +1714,12 @@ def research_dedupe_report(
 
     try:
         store = ResearchStore(session)
-        report = CorpusHardeningService(store).create_dedupe_report(created_by=created_by)
+        service = CorpusHardeningService(store)
+        report = (
+            service.create_claim_dedupe_report(created_by=created_by, run_id=run_id)
+            if claims
+            else service.create_dedupe_report(created_by=created_by)
+        )
         session.commit()
         payload = report_payload(report)
         if as_json:
@@ -1598,24 +1730,84 @@ def research_dedupe_report(
         table.add_column("Field", style="cyan")
         table.add_column("Value", style="green")
         table.add_row("Report", report.id)
+        table.add_row("Type", report.report_type)
         table.add_row("Duplicate Groups", str(report.duplicate_group_count))
-        table.add_row("Duplicate Documents", str(report.duplicate_document_count))
+        table.add_row(
+            "Duplicate Claims" if claims else "Duplicate Documents",
+            str(report.duplicate_document_count),
+        )
         table.add_row("Created By", report.created_by or "-")
         console.print(table)
 
         groups = Table(title="Duplicate Groups")
         groups.add_column("Match", style="cyan")
         groups.add_column("Key", style="blue")
-        groups.add_column("Documents", style="green")
-        groups.add_column("Titles")
+        groups.add_column("Items", style="green")
+        groups.add_column("Text")
         for group in payload["groups"]:
             groups.add_row(
                 group["match_type"],
                 group["match_key"][:80],
-                str(len(group["document_ids"])),
-                "; ".join(title or "-" for title in group["titles"])[:100],
+                str(len(group["claim_ids"] if claims else group["document_ids"])),
+                "; ".join(group["claim_texts"] if claims else [title or "-" for title in group["titles"]])[:100],
             )
         console.print(groups)
+    except Exception as exc:
+        session.rollback()
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        session.close()
+
+
+@research.command("refresh-sources")
+@click.option("--limit", type=int, help="Maximum due interval-refresh sources to check")
+@click.option("--refreshed-by", help="Actor executing the scheduled refresh")
+@click.option("--json", "as_json", is_flag=True, help="Emit refresh results as JSON")
+@click.pass_context
+def research_refresh_sources(
+    ctx: click.Context,
+    limit: Optional[int],
+    refreshed_by: Optional[str],
+    as_json: bool,
+) -> None:
+    """Execute due scheduled source refresh checks."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.corpus import CorpusHardeningService
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        results = CorpusHardeningService(store).execute_scheduled_refresh(
+            limit=limit,
+            refreshed_by=refreshed_by,
+        )
+        session.commit()
+        payloads = [result.to_dict() for result in results]
+        if as_json:
+            console.print(json.dumps(payloads, indent=2, sort_keys=True))
+            return
+
+        table = Table(title="Scheduled Source Refresh")
+        table.add_column("Document", style="cyan")
+        table.add_column("Status", style="green")
+        table.add_column("New Version", style="blue")
+        table.add_column("Next Refresh")
+        table.add_column("Message")
+        for result in results:
+            table.add_row(
+                result.document_id[:8],
+                result.status,
+                (result.new_document_id or "-")[:8],
+                result.next_refresh_at or "-",
+                result.message or "-",
+            )
+        console.print(table)
     except Exception as exc:
         session.rollback()
         raise click.ClickException(str(exc)) from exc
@@ -2360,6 +2552,158 @@ def research_audit_events(
         console.print(table)
     finally:
         session.close()
+
+
+@research.command("retention-plan")
+@click.option("--json", "as_json", is_flag=True, help="Emit the retention plan as JSON")
+@click.pass_context
+def research_retention_plan(ctx: click.Context, as_json: bool) -> None:
+    """Show the dry-run retention plan for operational records."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.research.retention import ResearchRetentionService
+    from hal9000.storage import create_object_store_from_settings
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        plan = ResearchRetentionService(
+            session,
+            settings.retention,
+            object_store=create_object_store_from_settings(settings),
+        ).plan()
+        if as_json:
+            click.echo(json.dumps(plan.to_dict(), indent=2, sort_keys=True))
+            return
+
+        table = Table(title="Retention Plan")
+        table.add_column("Rule", style="cyan")
+        table.add_column("Table", style="blue")
+        table.add_column("Retain Days", justify="right", style="green")
+        table.add_column("Candidates", justify="right", style="yellow")
+        table.add_column("Cutoff")
+        for rule in plan.rules:
+            table.add_row(
+                rule.name,
+                rule.table,
+                str(rule.retain_days),
+                str(rule.candidates),
+                rule.to_dict()["cutoff"],
+            )
+        console.print(table)
+        console.print(f"[cyan]Retention enabled:[/cyan] {str(plan.enabled).lower()}")
+        console.print(f"[cyan]Total candidates:[/cyan] {plan.total_candidates}")
+    finally:
+        session.close()
+
+
+@research.command("retention-apply")
+@click.option("--confirm", is_flag=True, help="Apply retention deletions")
+@click.option("--json", "as_json", is_flag=True, help="Emit the result as JSON")
+@click.pass_context
+def research_retention_apply(ctx: click.Context, confirm: bool, as_json: bool) -> None:
+    """Apply the configured retention policy when explicitly confirmed."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.research.retention import ResearchRetentionService
+    from hal9000.storage import create_object_store_from_settings
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        result = ResearchRetentionService(
+            session,
+            settings.retention,
+            object_store=create_object_store_from_settings(settings),
+        ).apply(confirm=confirm)
+        if result.applied:
+            session.commit()
+        else:
+            session.rollback()
+        if as_json:
+            click.echo(json.dumps(result.to_dict(), indent=2, sort_keys=True))
+            return
+
+        console.print(f"[cyan]Retention status:[/cyan] {result.message}")
+        console.print(f"[cyan]Applied:[/cyan] {str(result.applied).lower()}")
+        console.print(f"[cyan]Total candidates:[/cyan] {result.plan.total_candidates}")
+        if result.deleted_counts:
+            table = Table(title="Deleted Records")
+            table.add_column("Rule", style="cyan")
+            table.add_column("Deleted", justify="right", style="green")
+            for rule, count in sorted(result.deleted_counts.items()):
+                table.add_row(rule, str(count))
+            console.print(table)
+    except Exception as exc:
+        session.rollback()
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        session.close()
+
+
+@research.command("compliance-check")
+@click.option("--json", "as_json", is_flag=True, help="Emit the compliance report as JSON")
+@click.option(
+    "--fail-on",
+    type=click.Choice(["none", "high", "medium", "low"]),
+    default="none",
+    show_default=True,
+    help="Exit non-zero when findings at or above this severity exist",
+)
+@click.pass_context
+def research_compliance_check(ctx: click.Context, as_json: bool, fail_on: str) -> None:
+    """Check PDFs and generated summaries for rights/compliance gaps."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.research.compliance import ResearchComplianceService
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        report = ResearchComplianceService(session).check()
+        if as_json:
+            click.echo(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+        else:
+            table = Table(title="Research Compliance Findings")
+            table.add_column("Severity", style="yellow")
+            table.add_column("Code", style="cyan")
+            table.add_column("Target", style="blue")
+            table.add_column("Title")
+            table.add_column("Action")
+            for issue in report.issues:
+                table.add_row(
+                    issue.severity,
+                    issue.code,
+                    f"{issue.target_type}:{issue.target_id[:24]}",
+                    issue.title[:80],
+                    issue.action_required[:96],
+                )
+            console.print(table)
+            console.print(f"[cyan]Checked:[/cyan] {report.checked}")
+            console.print(f"[cyan]Issues:[/cyan] {report.issue_count}")
+        if _compliance_should_fail(report, fail_on):
+            raise click.ClickException(
+                f"Compliance findings meet --fail-on={fail_on}: {report.issue_count} issue(s)"
+            )
+    finally:
+        session.close()
+
+
+def _compliance_should_fail(report, fail_on: str) -> bool:
+    if fail_on == "none":
+        return False
+    threshold = {"high": 0, "medium": 1, "low": 2}[fail_on]
+    ranks = {"high": 0, "medium": 1, "low": 2}
+    return any(ranks.get(issue.severity, 3) <= threshold for issue in report.issues)
 
 
 def _render_observability_summary(summary) -> None:
@@ -3164,7 +3508,7 @@ def _export_target_values(targets: tuple[str, ...]):
     "--target",
     "targets",
     multiple=True,
-    type=click.Choice(["adam", "obsidian", "markdown", "json", "dashboard"]),
+    type=click.Choice(["adam", "obsidian", "markdown", "json", "dashboard", "graph"]),
     help="Export target to create; repeat for multiple targets. Defaults to all targets.",
 )
 @click.option(
@@ -3267,7 +3611,7 @@ def research_export_run(
     "--target",
     "targets",
     multiple=True,
-    type=click.Choice(["adam", "obsidian", "markdown", "json", "dashboard"]),
+    type=click.Choice(["adam", "obsidian", "markdown", "json", "dashboard", "graph"]),
     help="Export target to create; repeat for multiple targets. Defaults to all targets.",
 )
 @click.option(
@@ -3430,6 +3774,20 @@ def research_search_chunks(
 @click.option("--project-slug", help="Limit search to a project")
 @click.option("--run-id", help="Limit search to a run")
 @click.option("--limit", default=None, type=int, help="Maximum memory results to return")
+@click.option(
+    "--graph-boost/--no-graph-boost",
+    default=False,
+    help="Boost semantic results that are connected in the research graph",
+)
+@click.option(
+    "--graph-boost-weight",
+    default=0.15,
+    show_default=True,
+    type=float,
+    help="Maximum score lift from a confidence-1.0 graph connection",
+)
+@click.option("--graph-entity-type", help="Only boost results connected to this graph entity type")
+@click.option("--graph-entity-id", help="Only boost results connected to this graph entity id")
 @click.option("--json", "as_json", is_flag=True, help="Emit results as JSON")
 @click.pass_context
 def research_search_memory(
@@ -3439,6 +3797,10 @@ def research_search_memory(
     project_slug: Optional[str],
     run_id: Optional[str],
     limit: Optional[int],
+    graph_boost: bool,
+    graph_boost_weight: float,
+    graph_entity_type: Optional[str],
+    graph_entity_id: Optional[str],
     as_json: bool,
 ) -> None:
     """Search extracted claims and outputs semantically."""
@@ -3446,6 +3808,7 @@ def research_search_memory(
 
     from hal9000.db.models import init_db
     from hal9000.db.store import ResearchStore
+    from hal9000.research.graph import normalize_graph_entity_type
     from hal9000.vector import VectorRepository, create_embedding_provider
 
     settings = _get_settings_from_context(ctx)
@@ -3467,6 +3830,11 @@ def research_search_memory(
             model=settings.vector.embedding_model,
         )
         repository = VectorRepository(session)
+        if bool(graph_entity_type) != bool(graph_entity_id):
+            raise click.ClickException("Provide both --graph-entity-type and --graph-entity-id")
+        normalized_graph_entity_type = (
+            normalize_graph_entity_type(graph_entity_type) if graph_entity_type else None
+        )
         results = repository.search_memory(
             query_text=query_text,
             provider=provider,
@@ -3474,6 +3842,10 @@ def research_search_memory(
             limit=limit or settings.vector.retrieval_limit,
             project_id=project_id,
             run_id=run_id,
+            graph_boost=graph_boost,
+            graph_boost_weight=graph_boost_weight,
+            graph_entity_type=normalized_graph_entity_type,
+            graph_entity_id=graph_entity_id,
         )
         payloads = [result.as_context_item() for result in results]
         if as_json:
@@ -3482,6 +3854,7 @@ def research_search_memory(
 
         table = Table(title="Semantic Memory Search")
         table.add_column("Score", style="green", justify="right")
+        table.add_column("Graph", style="magenta", justify="right")
         table.add_column("Type", style="cyan")
         table.add_column("ID", style="blue")
         table.add_column("Title")
@@ -3490,6 +3863,7 @@ def research_search_memory(
         for result in results:
             table.add_row(
                 f"{result.score:.3f}",
+                f"+{result.graph_boost_score:.3f}" if result.graph_boost_score else "-",
                 result.target_type,
                 result.target_id[:8],
                 result.title or "-",
@@ -3690,6 +4064,168 @@ def research_graph_edges(
             console.print("[yellow]No graph edges matched the filters.[/yellow]")
     finally:
         session.close()
+
+
+@research.command("graph-project")
+@click.argument("project_slug")
+@click.option("--status", default="active", show_default=True, help="Graph edge status filter")
+@click.option("--limit", default=500, show_default=True, type=int, help="Maximum edges to include")
+@click.option("--json", "as_json", is_flag=True, help="Emit the project graph as JSON")
+@click.option("--mermaid", is_flag=True, help="Emit the project graph as Mermaid")
+@click.pass_context
+def research_graph_project(
+    ctx: click.Context,
+    project_slug: str,
+    status: str,
+    limit: int,
+    as_json: bool,
+    mermaid: bool,
+) -> None:
+    """Show a project-scoped graph view."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.graph import ResearchGraphService, render_mermaid_graph
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        project = _get_project_or_raise(store, project_slug)
+        graph = ResearchGraphService(store).project_graph(
+            project,
+            status=status,
+            limit=limit,
+        )
+        if as_json:
+            click.echo(json.dumps(graph.to_dict(), indent=2, sort_keys=True))
+            return
+        if mermaid:
+            click.echo(render_mermaid_graph(graph))
+            return
+        _render_graph_payload(graph)
+    finally:
+        session.close()
+
+
+@research.command("graph-neighborhood")
+@click.argument("entity_type")
+@click.argument("entity_id")
+@click.option(
+    "--direction",
+    default="both",
+    type=click.Choice(["incoming", "outgoing", "both"]),
+    show_default=True,
+)
+@click.option("--depth", default=1, show_default=True, type=int)
+@click.option("--relationship", "relationship_type", help="Filter by relationship type")
+@click.option("--project-slug", help="Scope neighborhood to a project")
+@click.option("--run-id", help="Scope neighborhood to a run")
+@click.option("--status", default="active", show_default=True, help="Graph edge status filter")
+@click.option("--limit", default=100, show_default=True, type=int, help="Maximum edges to include")
+@click.option("--json", "as_json", is_flag=True, help="Emit the neighborhood as JSON")
+@click.option("--mermaid", is_flag=True, help="Emit the neighborhood as Mermaid")
+@click.pass_context
+def research_graph_neighborhood(
+    ctx: click.Context,
+    entity_type: str,
+    entity_id: str,
+    direction: str,
+    depth: int,
+    relationship_type: Optional[str],
+    project_slug: Optional[str],
+    run_id: Optional[str],
+    status: str,
+    limit: int,
+    as_json: bool,
+    mermaid: bool,
+) -> None:
+    """Show an entity-centered graph neighborhood."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.graph import ResearchGraphService, render_mermaid_graph
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+        project = _get_project_or_raise(store, project_slug) if project_slug else None
+        run = None
+        if run_id:
+            run = store.get_run(run_id)
+            if run is None:
+                raise click.ClickException(f"Research run not found: {run_id}")
+        graph = ResearchGraphService(store).neighborhood(
+            entity_type=entity_type,
+            entity_id=entity_id,
+            direction=direction,
+            depth=depth,
+            relationship_type=relationship_type,
+            project=project,
+            run=run,
+            status=status,
+            limit=limit,
+        )
+        if as_json:
+            click.echo(json.dumps(graph.to_dict(), indent=2, sort_keys=True))
+            return
+        if mermaid:
+            click.echo(render_mermaid_graph(graph))
+            return
+        _render_graph_payload(graph)
+    finally:
+        session.close()
+
+
+def _render_graph_payload(graph) -> None:
+    """Render a graph payload in compact tables."""
+    summary = graph.summary
+    overview = Table(title=f"Research Graph: {graph.scope_label}")
+    overview.add_column("Metric", style="cyan")
+    overview.add_column("Value", style="green")
+    overview.add_row("Scope", graph.scope)
+    overview.add_row("Nodes", str(summary["node_count"]))
+    overview.add_row("Edges", str(summary["edge_count"]))
+    overview.add_row(
+        "Relationships",
+        ", ".join(
+            f"{key}:{value}" for key, value in summary["edges_by_relationship"].items()
+        )
+        or "-",
+    )
+    console.print(overview)
+
+    nodes = Table(title="Top Graph Nodes")
+    nodes.add_column("Type", style="cyan")
+    nodes.add_column("ID", style="blue")
+    nodes.add_column("Degree", justify="right", style="green")
+    nodes.add_column("Label")
+    for node in graph.nodes[:15]:
+        nodes.add_row(node.entity_type, node.entity_id[:24], str(node.degree), node.label[:90])
+    console.print(nodes)
+
+    edges = Table(title="Graph Edges")
+    edges.add_column("Relation", style="green")
+    edges.add_column("Source", style="cyan")
+    edges.add_column("Target", style="blue")
+    edges.add_column("Confidence", justify="right")
+    for edge in graph.edges[:20]:
+        edges.add_row(
+            edge.relationship_type,
+            f"{edge.source_type}:{edge.source_id[:24]}",
+            f"{edge.target_type}:{edge.target_id[:24]}",
+            f"{edge.confidence:.3f}",
+        )
+    console.print(edges)
+    if not graph.edges:
+        console.print("[yellow]No graph edges matched the filters.[/yellow]")
 
 
 def _get_project_or_raise(store, project_slug: str):
@@ -3997,7 +4533,7 @@ def research_work_queue(
     """Execute queued research runs once for worker/scheduler deployments."""
     from hal9000.db.models import init_db
     from hal9000.db.store import ResearchStore
-    from hal9000.research.queue import ResearchQueueRunner
+    from hal9000.research.queue import QueueWorkerService, QueueWorkerServiceConfig
 
     settings = _get_settings_from_context(ctx)
     _, session_local = init_db(settings.database.url)
@@ -4017,28 +4553,125 @@ def research_work_queue(
                 phase_timeout_seconds,
             )
 
-        results = ResearchQueueRunner(store, worker_factory).run_once(limit=limit)
+        service = QueueWorkerService(
+            store,
+            worker_factory,
+            QueueWorkerServiceConfig(limit=limit, max_iterations=1),
+        )
+        results = service.run_once().results
         session.commit()
 
-        table = Table(title="Queued Worker Results")
-        table.add_column("Run", style="cyan")
-        table.add_column("Status", style="green")
-        table.add_column("Result", style="magenta")
-        table.add_column("Error", style="red")
-        for result in results:
-            table.add_row(
-                result.run_id[:8],
-                result.status,
-                "succeeded" if result.succeeded else "failed",
-                result.error or "-",
-            )
-        console.print(table)
+        _render_queue_results(results)
         console.print(f"[green]Queued worker processed {len(results)} run(s).[/green]")
     except Exception as exc:
         session.commit()
         raise click.ClickException(str(exc)) from exc
     finally:
         session.close()
+
+
+@research.command("worker-service")
+@click.option("--limit", default=1, type=int, help="Maximum queued runs per poll")
+@click.option("--actor", default="hal-queue-worker", help="Worker or agent name")
+@click.option("--poll-seconds", default=30.0, type=float, help="Seconds between queue polls")
+@click.option(
+    "--max-iterations",
+    type=int,
+    help="Stop after this many polls; omit to run until interrupted",
+)
+@click.option(
+    "--live-acquisition/--no-live-acquisition",
+    default=False,
+    help="Allow queued runs to search, download, and process new papers within budget",
+)
+@click.option("--max-attempts", default=1, type=int, help="Maximum attempts per worker phase")
+@click.option(
+    "--phase-timeout-seconds",
+    type=float,
+    help="Fail a worker phase if it exceeds this duration",
+)
+@click.option("--json", "as_json", is_flag=True, help="Emit iteration summaries as JSON")
+@click.pass_context
+def research_worker_service(
+    ctx: click.Context,
+    limit: int,
+    actor: str,
+    poll_seconds: float,
+    max_iterations: Optional[int],
+    live_acquisition: bool,
+    max_attempts: int,
+    phase_timeout_seconds: Optional[float],
+    as_json: bool,
+) -> None:
+    """Run the packaged queue-worker service loop."""
+    import json
+
+    from hal9000.db.models import init_db
+    from hal9000.db.store import ResearchStore
+    from hal9000.research.queue import QueueWorkerService, QueueWorkerServiceConfig
+
+    settings = _get_settings_from_context(ctx)
+    _, session_local = init_db(settings.database.url)
+    session = session_local()
+
+    try:
+        store = ResearchStore(session)
+
+        def worker_factory(current_store):
+            return _build_research_worker(
+                current_store,
+                settings,
+                session,
+                actor,
+                live_acquisition,
+                max_attempts,
+                phase_timeout_seconds,
+            )
+
+        service = QueueWorkerService(
+            store,
+            worker_factory,
+            QueueWorkerServiceConfig(
+                limit=limit,
+                poll_seconds=poll_seconds,
+                max_iterations=max_iterations,
+            ),
+        )
+        ticks = service.run()
+        session.commit()
+        if as_json:
+            click.echo(json.dumps([tick.to_dict() for tick in ticks], indent=2, sort_keys=True))
+            return
+        for tick in ticks:
+            console.print(f"[cyan]Worker service iteration {tick.iteration}[/cyan]")
+            _render_queue_results(tick.results)
+            console.print(
+                f"[green]processed={tick.processed} succeeded={tick.succeeded} failed={tick.failed}[/green]"
+            )
+    except KeyboardInterrupt:
+        session.commit()
+        console.print("\n[yellow]Worker service stopped.[/yellow]")
+    except Exception as exc:
+        session.commit()
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        session.close()
+
+
+def _render_queue_results(results) -> None:
+    table = Table(title="Queued Worker Results")
+    table.add_column("Run", style="cyan")
+    table.add_column("Status", style="green")
+    table.add_column("Result", style="magenta")
+    table.add_column("Error", style="red")
+    for result in results:
+        table.add_row(
+            result.run_id[:8],
+            result.status,
+            "succeeded" if result.succeeded else "failed",
+            result.error or "-",
+        )
+    console.print(table)
 
 
 def main() -> None:

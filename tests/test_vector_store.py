@@ -8,6 +8,7 @@ from hal9000.db.models import (
     Document,
     DocumentChunk,
     ExtractedClaim,
+    ResearchGraphEdge,
     ResearchOutput,
     ResearchProject,
     ResearchRun,
@@ -210,5 +211,75 @@ def test_vector_repository_searches_claims_and_outputs_semantically():
         assert output_results[0].target_id == output.id
         assert {result.target_type for result in memory_results} == {"claim", "output"}
         assert memory_results[0].as_context_item()["content"]
+    finally:
+        session.close()
+
+
+def test_vector_repository_can_boost_memory_results_with_graph_edges():
+    """Graph-aware memory search should expose one-hop graph boosts when requested."""
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+
+    try:
+        project = ResearchProject(name="Graph Retrieval", slug="graph-retrieval")
+        run = ResearchRun(project=project, objective="Search graph memory.")
+        document = Document(
+            source_path="/papers/graph-memory.pdf",
+            source_type="local",
+            file_hash="j" * 64,
+            title="Graph Memory Paper",
+        )
+        chunk = DocumentChunk(
+            document=document,
+            run=run,
+            chunk_index=0,
+            text_hash="k" * 64,
+            content="CMSX-4 improves creep resistance.",
+        )
+        session.add_all([project, chunk])
+        session.flush()
+
+        claim = ExtractedClaim(
+            document=document,
+            chunk=chunk,
+            run=run,
+            claim_text="CMSX-4 improves creep resistance.",
+            evidence_text="CMSX-4 improves creep resistance.",
+        )
+        session.add(claim)
+        session.flush()
+        session.add(
+            ResearchGraphEdge(
+                project_id=project.id,
+                run_id=run.id,
+                source_type="claim",
+                source_id=claim.id,
+                relationship_type="studies_material",
+                target_type="material",
+                target_id="CMSX-4",
+                confidence=0.8,
+            )
+        )
+        session.commit()
+
+        provider = FakeEmbeddingProvider(dimension=8)
+        repository = VectorRepository(session)
+        results = repository.search_memory(
+            "creep resistance",
+            provider,
+            targets={"claims"},
+            project_id=project.id,
+            graph_boost=True,
+            graph_entity_type="material",
+            graph_entity_id="CMSX-4",
+            graph_boost_weight=0.2,
+        )
+        payload = results[0].as_context_item()
+
+        assert results[0].target_id == claim.id
+        assert results[0].base_score is not None
+        assert round(results[0].graph_boost_score, 3) == 0.16
+        assert payload["graph_connections"][0]["relationship_type"] == "studies_material"
     finally:
         session.close()

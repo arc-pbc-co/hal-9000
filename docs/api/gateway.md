@@ -97,6 +97,143 @@ Response:
 }
 ```
 
+### Agent Sessions
+
+The default gateway router exposes HAL agent sessions through `COMMAND`
+messages. The WebSocket connection still has its normal gateway `session_id`;
+agent runtime state is addressed with `payload.agent_session_id`.
+
+Create a session:
+
+```json
+{
+    "type": "command",
+    "session_id": "placeholder",
+    "payload": {
+        "action": "agent.create",
+        "agent_session_id": "research-chat-1",
+        "system_prompt": "You are HAL."
+    }
+}
+```
+
+Submit a turn:
+
+```json
+{
+    "type": "command",
+    "session_id": "placeholder",
+    "payload": {
+        "action": "agent.submit",
+        "agent_session_id": "research-chat-1",
+        "text": "Search memory for creep-resistant nickel superalloys."
+    }
+}
+```
+
+Resolve an approval:
+
+```json
+{
+    "type": "command",
+    "session_id": "placeholder",
+    "payload": {
+        "action": "agent.approve",
+        "agent_session_id": "research-chat-1",
+        "approval_id": "approval-uuid",
+        "approved": true,
+        "actor": "reviewer@example.com",
+        "reason": "Within run policy."
+    }
+}
+```
+
+Other supported actions are `agent.interrupt`, `agent.compact`,
+`agent.replay`, and `agent.history`. `agent.replay` returns the HAL
+`AgentEvent` stream with sequence numbers and accepts `after_sequence` and
+`limit`; `agent.history` returns HAL-owned provider-neutral messages and
+accepts `include_system`.
+
+When `agent.create` includes a `run_id`, the gateway mirrors emitted
+`AgentEvent` payloads into that run's append-only ledger as
+`agent.gateway.event` records. After a gateway restart, clients can recover the
+event stream and latest history snapshot without a live runtime by passing both
+`agent_session_id` and `run_id` to `agent.replay` or `agent.history`:
+
+```json
+{
+    "type": "command",
+    "session_id": "placeholder",
+    "payload": {
+        "action": "agent.replay",
+        "agent_session_id": "research-chat-1",
+        "run_id": "research-run-uuid",
+        "after_sequence": 12
+    }
+}
+```
+
+### HTTP App Gateway
+
+The app gateway serves deployment-facing HTTP routes for non-CLI apps:
+
+| Route | Purpose |
+| --- | --- |
+| `GET /` or `GET /ui` | Browser HAL cockpit |
+| `GET /health` | Liveness probe |
+| `GET /ready` | Database and integration-secret readiness |
+| `GET /api/frontend/config` | Cockpit model and route configuration |
+| `GET /api/frontend/review` | Review queue/detail panel payloads |
+| `GET /api/frontend/evidence` | Run evidence panel payloads |
+| `GET /api/frontend/graph` | Project or run graph panel payloads |
+| `GET /api/agent/sessions` | Live agent session snapshots |
+| `POST /api/agent/session` | Create a browser-facing HAL agent session |
+| `POST /api/agent/submit` | Submit chat text into a HAL agent session |
+| `POST /api/agent/approve` | Resolve a pending tool approval |
+| `POST /api/agent/interrupt` | Interrupt an active agent turn |
+| `POST /api/agent/compact` | Request token-aware context compaction |
+| `GET /api/agent/replay` | Replay live or durable agent events |
+| `GET /api/agent/history` | Read provider-neutral agent message history |
+| `POST /slack/command` | Slack slash-command ingress |
+| `POST /slack/action` | Slack interactive action ingress |
+| `POST /slack/event` | Slack Events API callback ingress |
+| `POST /sheets/writeback` | Token-gated Sheets writeback ingress |
+
+The browser cockpit is a lightweight first graft over the approved HAL runtime.
+It uses the REST agent endpoints for sessions, chat submission, event replay,
+approvals, interrupts, compaction, and per-session model metadata. The HAL
+panels reuse existing review, evidence, and graph services rather than owning
+research state in the frontend.
+
+Slack signatures are verified when a signing secret is configured. Slack event
+callbacks support `url_verification` plus app-mention/message callbacks for
+channel commands such as `summary <run_id>` and `exports <run_id>`. Accepted
+channel callbacks create durable Slack notifications that can be posted through
+the delivery worker with channel and thread metadata preserved.
+
+Sheets writeback is disabled unless `app_gateway.sheets_writeback_enabled` is true and
+a bearer token is configured. Accepted Sheets payloads are applied through HAL's
+authorized review, annotation, and run-queue services.
+
+Supported Sheets writeback actions:
+
+| Action | Required fields | Effect |
+| --- | --- | --- |
+| `add_comment` | `actor_email`, `target_type`, `target_id`, `body` | Adds an authorized output or claim annotation |
+| `review_run` | `actor_email`, `run_id`, `decision` | Promotes, rejects, or requests changes for a staged run |
+| `queue_run` | `actor_email`, `project_slug`, `objective` | Queues a project-scoped run and records `run.queued` |
+
+Example:
+
+```json
+{
+  "action": "queue_run",
+  "actor_email": "reviewer@example.com",
+  "project_slug": "firm-research",
+  "objective": "Refresh the May competitive brief."
+}
+```
+
 ## Classes
 
 ### HALGateway
@@ -131,6 +268,29 @@ class HALGateway:
 |----------|------|-------------|
 | `is_running` | `bool` | Server running status |
 | `uptime_seconds` | `float` | Time since server started |
+
+### AgentGatewaySessionManager
+
+Creates queue-driven HAL agent sessions for gateway clients.
+
+```python
+class AgentGatewaySessionManager:
+    async def create_session(
+        session_id: str | None = None,
+        gateway_session_id: str | None = None,
+        user_id: str | None = None,
+        run_id: str | None = None,
+        system_prompt: str | None = None,
+        messages: list[dict] | None = None,
+    ) -> AgentGatewaySession
+```
+
+`AgentGatewaySession` exposes `submit`, `approve`, `interrupt`, `compact`,
+`replay`, `history`, and `shutdown`. The gateway wrapper does not execute tools
+directly; it queues `AgentOperation` objects into `AgentSessionRuntime`, so
+approvals, compaction, and tool accounting stay inside HAL's agent event model.
+`AgentRunLedger` mirrors run-bound sessions into `ResearchRunEvent` for durable
+replay across process restarts.
 
 ### Session
 

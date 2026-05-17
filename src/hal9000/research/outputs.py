@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from hal9000.db.models import ResearchOutput, ResearchRun
+from hal9000.research.media import dedupe_media_references, normalize_media_reference
 
 if TYPE_CHECKING:
     from hal9000.db.store import ResearchStore
@@ -83,6 +84,7 @@ class ResearchOutputGenerator:
                         "program_name": run.program.name,
                         "generator": "ResearchOutputGenerator.stage_contract_outputs",
                         "retrieval_context": retrieval_context,
+                        "figures_tables": self._figure_table_items(run.claims),
                     },
                     created_by=created_by,
                     format=rendered_format,
@@ -253,9 +255,14 @@ class ResearchOutputGenerator:
         if figures_tables:
             lines.extend(["", "## Figures and Tables", ""])
             for item in figures_tables:
+                locator = item.get("locator") or (
+                    f"p. {item['page']}" if item.get("page") else None
+                )
+                locator_text = f" ({locator})" if locator else ""
                 lines.append(
                     f"- {item['kind'].title()}: {item['label']} "
-                    f"{item['citation_marker']} - {item['description']}"
+                    f"{item.get('citation_marker', '[S?]')}{locator_text} - "
+                    f"{item.get('caption') or item.get('description') or item['label']}"
                 )
         if retrieval_context:
             lines.extend(
@@ -291,11 +298,11 @@ class ResearchOutputGenerator:
         lines = [
             f"# Evidence Table: {run.objective}",
             "",
-            "| Claim | Type | Confidence | Citation | Source | Locator | Evidence |",
-            "|-------|------|------------|----------|--------|---------|----------|",
+            "| Claim | Type | Confidence | Citation | Source | Locator | Evidence | Figures/Tables |",
+            "|-------|------|------------|----------|--------|---------|----------|----------------|",
         ]
         if not run.claims:
-            lines.append("| No claims attached yet | - | - | - | - | - | - |")
+            lines.append("| No claims attached yet | - | - | - | - | - | - | - |")
             return "\n".join(lines)
 
         for claim in run.claims:
@@ -313,7 +320,8 @@ class ResearchOutputGenerator:
                 f"{self._md_cell(marker)} | "
                 f"{self._md_cell(source)} | "
                 f"{self._md_cell(locator)} | "
-                f"{self._md_cell(quote)} |"
+                f"{self._md_cell(quote)} | "
+                f"{self._md_cell(self._media_refs_for_claim_text(claim))} |"
             )
         lines.extend(self._source_notes_section(citations.values()))
         return "\n".join(lines)
@@ -511,6 +519,7 @@ class ResearchOutputGenerator:
             "quote": evidence.quote if evidence else claim.evidence_text,
             "source_url": evidence.source_url if evidence else None,
             "citation": citation.__dict__ if citation else None,
+            "figures_tables": self._figure_table_items([claim]),
         }
 
     def _md_cell(self, value: str | None) -> str:
@@ -525,6 +534,16 @@ class ResearchOutputGenerator:
         return (
             "Retrieved context is available but has not yet been converted into "
             f"reviewable claims. Top chunk: {top.get('content')}"
+        )
+
+    def _media_refs_for_claim_text(self, claim) -> str:
+        """Render compact figure/table labels for one claim."""
+        refs = self._figure_table_items([claim])
+        if not refs:
+            return ""
+        return "; ".join(
+            f"{item.get('label')} ({item.get('locator') or ('p. ' + str(item['page']) if item.get('page') else item.get('kind'))})"
+            for item in refs
         )
 
     def _citation_map(self, claims) -> dict[str, SourceCitation]:
@@ -604,10 +623,18 @@ class ResearchOutputGenerator:
             ):
                 for kind in ("figures", "tables"):
                     for raw in payload.get(kind, []) if isinstance(payload.get(kind), list) else []:
-                        item = self._figure_table_payload(raw, kind[:-1], marker, claim.id)
+                        item = self._figure_table_payload(
+                            raw,
+                            kind[:-1],
+                            marker,
+                            claim.id,
+                            claim.document_id,
+                            claim.chunk_id,
+                            citation.source_url if citation else None,
+                        )
                         if item:
                             items.append(item)
-        return items
+        return dedupe_media_references(items)
 
     def _figure_table_payload(
         self,
@@ -615,27 +642,22 @@ class ResearchOutputGenerator:
         kind: str,
         citation_marker: str,
         claim_id: str,
+        document_id: str | None,
+        chunk_id: str | None,
+        source_url: str | None,
     ) -> dict[str, Any] | None:
         """Normalize a figure/table reference."""
-        if isinstance(raw, str):
-            return {
-                "kind": kind,
-                "label": raw,
-                "description": raw,
-                "citation_marker": citation_marker,
-                "claim_id": claim_id,
-            }
-        if isinstance(raw, dict):
-            label = str(raw.get("label") or raw.get("id") or raw.get("title") or kind)
-            description = str(raw.get("description") or raw.get("caption") or label)
-            return {
-                "kind": kind,
-                "label": label,
-                "description": description,
-                "citation_marker": citation_marker,
-                "claim_id": claim_id,
-            }
-        return None
+        item = normalize_media_reference(
+            raw,
+            kind=kind,
+            document_id=document_id,
+            chunk_id=chunk_id,
+            claim_id=claim_id,
+            citation_marker=citation_marker,
+        )
+        if item and source_url and not item.get("source_url"):
+            item["source_url"] = source_url
+        return item
 
     def _json_payload(self, raw: str | None) -> dict[str, Any]:
         """Parse optional JSON object payloads."""

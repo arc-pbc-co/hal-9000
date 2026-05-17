@@ -10,8 +10,9 @@ from pathlib import Path
 from click.testing import CliRunner
 
 from hal9000.cli import cli
-from hal9000.db.models import init_db
+from hal9000.db.models import ResearchNotification, init_db
 from hal9000.db.store import ResearchStore
+from hal9000.research.collaboration import CollaborationService
 from hal9000.research.slack_app import SlackAppService, verify_slack_signature
 
 
@@ -63,6 +64,84 @@ def test_slack_app_action_maps_user_id(monkeypatch, temp_directory: Path):
 
         assert decision.text == f"Run `{run.id}` is now `promoted`."
         assert store.get_run(run.id).status == "promoted"
+    finally:
+        session.close()
+
+
+def test_slack_app_handles_run_summary_and_export_links(temp_directory: Path):
+    """Slack service should expose channel-ready summaries and export links."""
+    _, session_factory = init_db(f"sqlite:///{temp_directory / 'slack_summary.db'}")
+    session = session_factory()
+    try:
+        store = ResearchStore(session)
+        _, run = _seed_slack_project(store)
+        store.append_run_event(
+            run,
+            event_type="outputs.exported",
+            message="Exported run outputs.",
+            actor="hal-exporter",
+            payload={
+                "targets": ["json", "markdown"],
+                "manifest_uris": [
+                    "hal-local://exports/run.json",
+                    "hal-local://exports/run.md",
+                ],
+            },
+        )
+
+        service = SlackAppService(store)
+        summary = service.handle_command(f"summary {run.id}", "reviewer@example.com")
+        exports = service.handle_command(f"exports {run.id}", "reviewer@example.com")
+
+        assert summary.response_type == "in_channel"
+        assert f"Run `{run.id}` summary" in summary.text
+        assert summary.blocks[1]["fields"][0]["text"] == "*Outputs:*\n1"
+        assert exports.response_type == "in_channel"
+        assert exports.text == f"2 export link(s) recorded for run `{run.id}`."
+        assert "hal-local://exports/run.json" in exports.blocks[1]["text"]["text"]
+    finally:
+        session.close()
+
+
+def test_slack_app_event_callback_queues_channel_notification(monkeypatch, temp_directory: Path):
+    """Slack Events API callbacks should create durable channel responses."""
+    _, session_factory = init_db(f"sqlite:///{temp_directory / 'slack_event.db'}")
+    session = session_factory()
+    monkeypatch.setenv("HAL9000_SLACK_USER_MAP_JSON", '{"U123": "reviewer@example.com"}')
+    try:
+        store = ResearchStore(session)
+        project, run = _seed_slack_project(store)
+
+        response = SlackAppService(store).handle_event(
+            {
+                "type": "event_callback",
+                "event": {
+                    "type": "app_mention",
+                    "user": "U123",
+                    "channel": "CDEV",
+                    "ts": "1710000000.000100",
+                    "text": f"<@UHAL> summary {run.id}",
+                },
+            }
+        )
+        session.commit()
+
+        notification = session.get(ResearchNotification, response.notification_id)
+        payload = json.loads(notification.payload_json)
+        events = CollaborationService(store).list_audit_events(
+            project=project,
+            action="slack.event_callback",
+        )
+
+        assert response.status == "accepted"
+        assert response.channel_id == "CDEV"
+        assert response.run_id == run.id
+        assert notification is not None
+        assert notification.channel == "slack"
+        assert notification.run_id == run.id
+        assert payload["channel_id"] == "CDEV"
+        assert payload["command_text"] == f"summary {run.id}"
+        assert events[0].target_id == notification.id
     finally:
         session.close()
 

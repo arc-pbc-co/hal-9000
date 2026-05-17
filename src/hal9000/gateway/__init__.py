@@ -1,5 +1,12 @@
 """Gateway module for HAL-9000 WebSocket communication."""
 
+from hal9000.gateway.agent_ledger import AgentRunLedger
+from hal9000.gateway.agent_session import (
+    AgentGatewayError,
+    AgentGatewaySession,
+    AgentGatewaySessionManager,
+    create_agent_session_command_handler,
+)
 from hal9000.gateway.events import (
     EventEmitter,
     EventType,
@@ -38,6 +45,11 @@ __all__ = [
     "MessageType",
     "GatewayMessage",
     "ADAMPromptPayload",
+    "AgentRunLedger",
+    "AgentGatewayError",
+    "AgentGatewaySession",
+    "AgentGatewaySessionManager",
+    "create_agent_session_command_handler",
     "ResearchContext",
     "Session",
     "SessionManager",

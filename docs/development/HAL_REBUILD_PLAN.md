@@ -59,13 +59,25 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add graph relationship records for cites, supports, contradicts, uses method, studies material, and reports property.
 - [x] Replace first-pass output renderers with source-rich citation renderers and add output versioning/diffing.
 - [x] Add collections, saved searches, shared project views, notification records, and audit views.
+- [x] Add first read-only HF research discovery tools behind HAL agent policy.
+- [x] Add first approval-gated HF repo and Jobs compute adapters behind HAL policy.
+- [x] Add HF compute smoke evidence and artifact harvest manifests behind HAL policy.
+- [x] Add first approval-gated HF sandbox lifecycle adapter behind HAL policy.
+- [x] Add approval-gated scheduled HF Jobs and Trackio dashboard seed records behind HAL policy.
+- [x] Add HF artifact download/storage for job and repo outputs behind HAL policy.
+- [x] Add scheduled source refresh execution and claim-level dedupe reports.
+- [x] Add richer figure/table extraction and export rendering.
+- [x] Add graph visualization payloads, entity neighborhoods, graph exports, and optional graph-aware retrieval boosts.
+- [x] Add real Sheets writeback handlers for comments, review decisions, and run queueing.
+- [x] Add Slack channel workflow for run summaries, export links, and HTTP event callbacks.
+- [x] Add frontend graft for sessions, streaming chat, approvals, model picker, and HAL evidence/review/graph panels.
+- [x] Extend retention from operational rows to PDF/artifact object storage with legal-hold safeguards.
+- [x] Add provider secret-manager abstraction and compliance checks for copyrighted PDFs and generated summaries.
+- [x] Finish production release polish: type checks, changelog automation, packaged scheduler/service shape, and staging demo validation.
 
 ### Remaining
 
-- [ ] Add scheduled source refresh execution and claim-level dedupe reports.
-- [ ] Add richer figure/table extraction and export rendering.
-- [ ] Add HTTP deployment polish for Slack/Sheets production app webhooks.
-- [ ] Add retention, secrets-management, compliance, CI, and release-process hardening.
+- [ ] Harden HF compute retention, quotas, and production backend coverage.
 
 ## Master Completion Checklist
 
@@ -91,8 +103,8 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add document versioning and source refresh policy metadata.
 - [x] Add citation normalization and source quality fields.
 - [x] Add persisted deduplication reports for documents.
-- [ ] Add scheduled source refresh execution.
-- [ ] Add claim-level deduplication reports.
+- [x] Add scheduled source refresh execution.
+- [x] Add claim-level deduplication reports.
 
 ### Phase C: Retrieval and Knowledge Layer
 
@@ -101,6 +113,7 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add semantic search service over chunks.
 - [x] Extend semantic search service over claims and outputs.
 - [x] Add graph relationship tables and service for cites, supports, contradicts, uses method, studies material, and reports property.
+- [x] Add project graph payloads, entity-neighborhood views, Mermaid rendering, graph exports, and optional graph-aware retrieval boost.
 - [x] Add retrieval tests over a representative local corpus slice.
 
 ### Phase D: Agent Programs and Orchestration
@@ -120,6 +133,20 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add reviewer-facing run telemetry views and summaries.
 - [x] Add retry, cancellation, and timeout handling.
 - [x] Add scheduled or queued worker process.
+- [x] Add HAL-native agent graft boundary for ml-intern-style runtime integration.
+- [x] Add first async agent submission loop behind `hal9000.agent`.
+- [x] Add LiteLLM model routing and provider retry adapter behind `hal9000.agent`.
+- [x] Add tool approvals and token-aware context compaction behind `hal9000.agent`.
+- [x] Add HAL service tool adapters behind the approved agent runtime.
+- [x] Add gateway/session API for agent create, submit, approve, interrupt, compact, replay, and history.
+- [x] Add durable gateway agent replay/history from `ResearchRunEvent` after restarts.
+- [x] Add first read-only HF research discovery tools behind HAL agent policy.
+- [x] Add first approval-gated HF repo and Jobs compute adapters behind HAL policy.
+- [x] Add HF compute smoke evidence and artifact harvest manifests behind HAL policy.
+- [x] Add first approval-gated HF sandbox lifecycle adapter behind HAL policy.
+- [x] Add approval-gated scheduled HF Jobs and Trackio dashboard seed records behind HAL policy.
+- [x] Add HF artifact download/storage for job and repo outputs behind HAL policy.
+- [x] Add scheduled source refresh execution and claim-level dedupe reports.
 
 ### Phase E: Output Framework
 
@@ -132,7 +159,7 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add JSON export API for dashboards and downstream tools.
 - [x] Add output versioning and diffing.
 - [x] Add source-rich renderers using real citations, extracted claims, and first figure/table references.
-- [ ] Add richer figure/table extraction and export rendering.
+- [x] Add richer figure/table extraction and export rendering.
 
 ### Phase F: Collaboration and Review
 
@@ -152,30 +179,32 @@ platform with shared memory, repeatable agent workflows, and reviewable outputs.
 - [x] Add users, teams, roles, and permissions.
 - [x] Add SSO/OIDC integration plan.
 - [x] Add project visibility and access enforcement for review workflows.
-- [ ] Add retention policy for PDFs, artifacts, and logs.
-- [ ] Add secrets management for providers and model APIs.
-- [ ] Add compliance review for copyrighted PDFs and generated summaries.
+- [x] Add retention policy for PDFs, artifacts, and logs.
+- [x] Add secrets management for providers and model APIs.
+- [x] Add compliance review for copyrighted PDFs and generated summaries.
 
 ### Phase H: Deployment and Operations
 
-- [ ] Package API/gateway, worker, scheduler, and docs services.
+- [x] Package API/gateway, worker, scheduler, and docs services.
 - [x] Add Docker/Compose for local firmwide stack.
 - [x] Add production deployment manifests.
 - [x] Add observability: run metrics, queue metrics, cost, errors, latency.
 - [x] Add backup/restore plan for Postgres and object storage.
-- [ ] Add CI checks for tests, docs, migrations, and lint/type checks.
-- [ ] Add release process and changelog.
+- [x] Add CI checks for tests, docs, migrations, and lint/type checks.
+- [x] Add release process and changelog.
 
 ### Phase I: Non-CLI App Surfaces
 
 - [x] Add first notification delivery workers for in-app, Slack webhook, SMTP email, and Sheets-compatible CSV sync.
 - [x] Add first Slack app service contract for firm-wide research interaction.
-- [ ] Add Slack channel workflow for `#hal-9000-dev`, run summaries, export links, and HTTP event endpoints.
+- [x] Add Slack channel workflow for `#hal-9000-dev`, run summaries, export links, and HTTP event endpoints.
 - [x] Add Slack commands/buttons for queueing runs, checking run status, opening review detail, adding comments, and promoting/requesting changes.
 - [x] Add Google Sheets sync jobs for non-CLI run trackers, review queues, outputs, and audit dashboards.
-- [ ] Add Sheets writeback actions for comments, decisions, and run queueing.
+- [x] Add Sheets writeback actions for comments, decisions, and run queueing.
 - [x] Add permissions mapping so Slack and Sheets actions use the same OIDC/user/team/project access model as HAL services.
 - [x] Add first HTTP app gateway routes for Slack slash commands and button actions.
+- [x] Add app-gateway liveness/readiness checks and token-gated Sheets writeback ingress.
+- [x] Add browser cockpit graft over agent sessions, approvals, model selection, review, evidence, and graph panels.
 
 ## Full-Team Demo Readiness Checklist
 
@@ -269,10 +298,11 @@ Implemented in this slice:
 - `OIDCIdentityMapper` now maps verified OIDC claims into HAL users, global admin role, and HAL team memberships.
 - `ReviewAnnotationService` now supports authorized comments and annotations on outputs and extracted claims.
 - `hal research review-ui` now runs a lightweight HTTP review surface over the authorized queue, detail, comment, and decision services.
-- `CorpusHardeningService`, `hal research harden-corpus`, and `hal research dedupe-report` now attach stable source/version/citation/quality metadata and persist duplicate-document reports.
+- `CorpusHardeningService`, `hal research harden-corpus`, `hal research refresh-sources`, and `hal research dedupe-report` now attach stable source/version/citation/quality metadata, execute due source-refresh checks, version changed local files, and persist duplicate-document or duplicate-claim reports.
 - `VectorRepository.search_memory` and `hal research search-memory` now search extracted claims and research outputs through the embedding provider contract.
 - `ResearchGraphService`, `hal research add-graph-edge`, and `hal research graph-edges` now manage typed graph edges across documents, chunks, claims, outputs, and literal method/material/property/concept nodes.
 - `ResearchOutputGenerator` now renders citation-marked briefs/tables/JSON from extracted claims and evidence, while `research_output_versions`, `hal research output-versions`, and `hal research diff-output` provide output history and review diffs.
+- `research.media`, `ResearchCorpusPipeline`, `ResearchOutputGenerator`, and `ResearchOutputExporter` now extract structured figure/table caption references, carry them through claim provenance and output source metadata, and export them in Markdown, JSON, dashboard, and Obsidian artifacts.
 - `CollaborationService` and CLI commands now manage collections, saved searches, shared views, review-ready notifications, notification lists, and audit-event views.
 - `NotificationDeliveryService` and `hal research deliver-notifications` now process durable in-app, Slack webhook, SMTP email, and Sheets-compatible CSV notification queues.
 - `SlackAppService`, `hal research slack-command`, and `hal research slack-action` now provide Slack slash-command/button contracts for queueing runs, status checks, review queues, comments, and review decisions.
@@ -333,9 +363,4 @@ Deliverables:
 
 ## Immediate Next Tasks
 
-- Add scheduled source refresh execution and claim-level deduplication reports.
-- Add production hardening for HTTP Slack routes and Google Sheets writeback workflows.
-- Add richer figure/table extraction and export rendering.
-- Add Slack app and `#hal-9000-dev` channel workflow for non-CLI team updates.
-- Add Google Sheets writeback for non-CLI comments, review decisions, and run queueing.
-- Add retention, secrets-management, compliance, CI, and release-process hardening.
+- Harden HF compute retention, quotas, and production backend coverage.

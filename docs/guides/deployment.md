@@ -47,9 +47,15 @@ store where available. Keep these deployment contracts:
 - `HAL9000_DATABASE__URL` uses `postgresql+psycopg://...`.
 - `HAL9000_STORAGE__BACKEND=s3`.
 - `HAL9000_STORAGE__BUCKET` points at the artifact bucket.
-- Workers run `hal research work-queue` with bounded attempts and timeouts.
-- Slack request URLs point to the app gateway and use `HAL9000_SLACK_SIGNING_SECRET`.
+- Workers run `hal research worker-service` with bounded attempts, timeouts,
+  and explicit polling intervals.
+- Slack command, action, and event request URLs point to the app gateway and use
+  configured request signing.
+- App gateway readiness probes use `GET /ready`.
 - Migrations run before gateway and workers start.
+
+See [Production Hardening](production-hardening.md) for Slack/Sheets gateway
+secrets, retention policies, staging validation, CI, and release gates.
 
 ## Backup and Restore
 

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from hal9000.db.models import Document, DocumentChunk, ResearchRun
 from hal9000.db.store import ClaimEvidence, ResearchStore
 from hal9000.ingest import PDFProcessor
+from hal9000.research.media import extract_media_references_from_text, split_media_references
 from hal9000.vector import EmbeddingProvider, VectorRepository
 
 
@@ -118,6 +119,19 @@ class ResearchCorpusPipeline:
                 start = cursor
             end = start + len(chunk_text)
             cursor = end
+            media_references = extract_media_references_from_text(
+                chunk_text,
+                document_id=document.id,
+                char_offset=start,
+            )
+            extraction_metadata = {
+                "pipeline": "ResearchCorpusPipeline",
+                "chunk_size": self.chunk_size,
+                "chunk_overlap": self.chunk_overlap,
+            }
+            if media_references:
+                extraction_metadata.update(split_media_references(media_references))
+                extraction_metadata["figure_table_count"] = len(media_references)
             chunks.append(
                 self.store.add_document_chunk(
                     document=document,
@@ -127,11 +141,7 @@ class ResearchCorpusPipeline:
                     char_start=start,
                     char_end=end,
                     token_count=len(chunk_text.split()),
-                    extraction_metadata={
-                        "pipeline": "ResearchCorpusPipeline",
-                        "chunk_size": self.chunk_size,
-                        "chunk_overlap": self.chunk_overlap,
-                    },
+                    extraction_metadata=extraction_metadata,
                 )
             )
         self.store.append_run_event(
@@ -165,6 +175,11 @@ class ResearchCorpusPipeline:
         for index, claim_text in enumerate(claims[: self.max_claims_per_document]):
             chunk = self._best_chunk_for_claim(chunks, claim_text)
             evidence_text = self._evidence_excerpt(chunk.content if chunk else document.full_text, claim_text)
+            provenance = {
+                "pipeline": "ResearchCorpusPipeline",
+                "source": self._claim_source(document),
+            }
+            provenance.update(_chunk_media_payload(chunk))
             claim = self.store.add_claim_with_evidence(
                 document=document,
                 chunk=chunk,
@@ -175,10 +190,7 @@ class ResearchCorpusPipeline:
                     quote=evidence_text,
                     locator=f"chunk {chunk.chunk_index}" if chunk else None,
                     confidence=0.65 if index else 0.7,
-                    provenance={
-                        "pipeline": "ResearchCorpusPipeline",
-                        "source": self._claim_source(document),
-                    },
+                    provenance=provenance,
                 ),
             )
             result.claim_ids.append(claim.id)
@@ -300,3 +312,19 @@ def _dedupe_preserving_order(items: list[str]) -> list[str]:
             seen.add(key)
             deduped.append(item.strip())
     return deduped
+
+
+def _chunk_media_payload(chunk: DocumentChunk | None) -> dict[str, list[dict]]:
+    """Return figure/table metadata from a chunk as claim provenance payload."""
+    if chunk is None or not chunk.extraction_metadata:
+        return {}
+    try:
+        payload = json.loads(chunk.extraction_metadata)
+    except json.JSONDecodeError:
+        return {}
+    result = {}
+    for key in ("figures", "tables"):
+        value = payload.get(key)
+        if isinstance(value, list) and value:
+            result[key] = value
+    return result

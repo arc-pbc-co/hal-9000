@@ -36,7 +36,13 @@ def test_compose_manifest_defines_required_services():
         "--port",
         "9101",
     ]
-    assert "work-queue" in services["worker"]["command"]
+    app_gateway_env = services["app-gateway"]["environment"]
+    assert "HAL9000_APP_GATEWAY__SLACK_REQUIRED" in app_gateway_env
+    assert "HAL9000_APP_GATEWAY__SHEETS_WRITEBACK_ENABLED" in app_gateway_env
+    assert "HAL9000_RETENTION__ENABLED" in compose["x-hal-env"]
+    assert "HF_TOKEN" in compose["x-hal-env"]
+    assert "worker-service" in services["worker"]["command"]
+    assert "--poll-seconds" in services["worker"]["command"]
     assert services["docs"]["ports"] == ["${HAL9000_DOCS_PORT:-8000}:8000"]
     assert "postgres-data" in compose["volumes"]
     assert "object-store-data" in compose["volumes"]

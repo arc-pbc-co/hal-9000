@@ -345,6 +345,16 @@ def delivery_results_payload(results: list[DeliveryResult]) -> list[dict[str, An
 
 def _slack_payload(notification: ResearchNotification) -> dict[str, Any]:
     payload = json.loads(notification.payload_json) if notification.payload_json else {}
+    if isinstance(payload.get("blocks"), list) and payload["blocks"]:
+        message = {"text": notification.title, "blocks": payload["blocks"]}
+        channel_id = payload.get("channel_id") or payload.get("channel")
+        if channel_id:
+            message["channel"] = str(channel_id)
+        thread_ts = payload.get("thread_ts")
+        if thread_ts:
+            message["thread_ts"] = str(thread_ts)
+        return message
+
     fields = [
         {"type": "mrkdwn", "text": f"*Type:*\n{notification.notification_type}"},
         {"type": "mrkdwn", "text": f"*Status:*\n{notification.status}"},
@@ -353,7 +363,15 @@ def _slack_payload(notification: ResearchNotification) -> dict[str, Any]:
         fields.append({"type": "mrkdwn", "text": f"*Run:*\n{notification.run_id}"})
     if payload.get("output_ids"):
         fields.append({"type": "mrkdwn", "text": f"*Outputs:*\n{len(payload['output_ids'])}"})
-    return {
+    if payload.get("export_links"):
+        export_lines = [
+            f"- *{link.get('target', 'export')}*: {link.get('uri')}"
+            for link in payload["export_links"]
+            if isinstance(link, dict) and link.get("uri")
+        ]
+        if export_lines:
+            fields.append({"type": "mrkdwn", "text": "*Exports:*\n" + "\n".join(export_lines[:5])})
+    message = {
         "text": notification.title,
         "blocks": [
             {
@@ -370,3 +388,10 @@ def _slack_payload(notification: ResearchNotification) -> dict[str, Any]:
             {"type": "section", "fields": fields},
         ],
     }
+    channel_id = payload.get("channel_id") or payload.get("channel")
+    if channel_id:
+        message["channel"] = str(channel_id)
+    thread_ts = payload.get("thread_ts")
+    if thread_ts:
+        message["thread_ts"] = str(thread_ts)
+    return message

@@ -47,6 +47,15 @@ def test_output_generator_stages_program_contract_outputs(temp_directory: Path):
             run=run,
             chunk_index=0,
             content="Single crystal samples showed superior creep resistance.",
+            extraction_metadata={
+                "tables": [
+                    {
+                        "label": "Table 1",
+                        "caption": "Rupture life by stress level.",
+                        "page": 7,
+                    }
+                ]
+            },
         )
         store.add_claim_with_evidence(
             document=document,
@@ -81,8 +90,12 @@ def test_output_generator_stages_program_contract_outputs(temp_directory: Path):
         assert "[S1]" in staged.outputs[0].content
         assert "## Sources" in staged.outputs[0].content
         assert "Figure 2" in staged.outputs[0].content
+        assert "Table 1" in staged.outputs[0].content
+        assert "p. 7" in staged.outputs[0].content
         assert "| Single crystal samples" in staged.outputs[1].content
         assert "| [S1] | Source Paper | p. 4 |" in staged.outputs[1].content
+        assert "Figure 2" in staged.outputs[1].content
+        assert json.loads(staged.outputs[0].source_json)["figures_tables"][0]["label"] == "Figure 2"
         assert "contradictory sources" in staged.outputs[2].content
         assert staged.outputs[0].versions[0].version_number == 1
         assert run.status == "staged"

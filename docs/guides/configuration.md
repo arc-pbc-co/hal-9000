@@ -160,6 +160,30 @@ database:
 - `root_path`: local filesystem object-store root
 - `bucket`, `prefix`, `region`, `endpoint_url`: S3-compatible object storage
 
+### `retention`
+
+- `enabled`: allows confirmed retention applies; dry-runs work when disabled
+- `run_event_days`, `tool_call_days`, `notification_days`, `audit_event_days`, `gateway_session_days`: operational row windows
+- `pdf_artifact_days`: object-store PDF/source artifact window
+- `output_artifact_days`: generated output artifact window
+
+Artifact retention only deletes objects HAL can map to the configured object
+store. Records with `legal_hold`, `retention_hold`, `copyright_hold`,
+`retention_policy: legal_hold`, or future `legal_hold_until` metadata are
+reported as protected and skipped.
+
+### Provider secrets
+
+Provider credentials are resolved through HAL's shared secret-manager
+abstraction. The built-in backend reads environment variables and can be
+overridden in tests or hosted runtimes. Common names include
+`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `HF_TOKEN`, `GITHUB_TOKEN`,
+`SEMANTIC_SCHOLAR_API_KEY`, `HAL9000_SLACK_SIGNING_SECRET`, and
+`HAL9000_GOOGLE_SHEETS_TOKEN`.
+
+Keep secret values out of YAML files. CLI and gateway diagnostics may include
+the secret name/source, but values are redacted.
+
 ### `vector`
 
 - `backend`: `pgvector`

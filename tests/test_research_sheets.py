@@ -7,9 +7,9 @@ from pathlib import Path
 from click.testing import CliRunner
 
 from hal9000.cli import cli
-from hal9000.db.models import init_db
+from hal9000.db.models import ResearchAuditEvent, ReviewAnnotation, init_db
 from hal9000.db.store import ResearchStore
-from hal9000.research.sheets import GoogleSheetsAPIClient, SheetsSyncService
+from hal9000.research.sheets import GoogleSheetsAPIClient, SheetsSyncService, SheetsWritebackService
 
 
 class _FakeSheetsClient:
@@ -100,6 +100,106 @@ def test_sheets_sync_cli_dry_run_records_result(temp_directory: Path):
     assert result.exit_code == 0, result.output
     assert '"status": "skipped"' in result.output
     assert '"target": "runs"' in result.output
+
+
+def test_sheets_writeback_service_adds_authorized_comment(temp_directory: Path):
+    """Sheets writeback should add comments through the review annotation service."""
+    _, session_factory = init_db(f"sqlite:///{temp_directory / 'sheets_comment.db'}")
+    session = session_factory()
+    try:
+        store = ResearchStore(session)
+        _, run = _seed_sheets_project(store)
+        output = run.outputs[0]
+
+        result = SheetsWritebackService(store).handle_writeback(
+            {
+                "action": "add_comment",
+                "actor_email": "reviewer@example.com",
+                "target_type": "output",
+                "target_id": output.id,
+                "body": "Please add the governing citation.",
+                "annotation_type": "change_request",
+            }
+        )
+        session.commit()
+
+        annotation = session.get(ReviewAnnotation, result.annotation_id)
+        audit_event = session.get(ResearchAuditEvent, result.audit_event_id)
+
+        assert result.status == "accepted"
+        assert result.project_slug == "sheets-project"
+        assert annotation is not None
+        assert annotation.body == "Please add the governing citation."
+        assert annotation.annotation_type == "change_request"
+        assert audit_event is not None
+        assert audit_event.action == "sheets.comment_added"
+    finally:
+        session.close()
+
+
+def test_sheets_writeback_service_records_review_decision(temp_directory: Path):
+    """Sheets writeback should reuse the authorized run review workflow."""
+    _, session_factory = init_db(f"sqlite:///{temp_directory / 'sheets_review.db'}")
+    session = session_factory()
+    try:
+        store = ResearchStore(session)
+        _, run = _seed_sheets_project(store)
+
+        result = SheetsWritebackService(store).handle_writeback(
+            {
+                "action": "review_run",
+                "actor_email": "reviewer@example.com",
+                "run_id": run.id,
+                "decision": "promote",
+                "rationale": "Ready from Sheets.",
+            }
+        )
+        session.commit()
+
+        audit_event = session.get(ResearchAuditEvent, result.audit_event_id)
+
+        assert result.status == "accepted"
+        assert result.decision == "promoted"
+        assert run.status == "promoted"
+        assert run.outputs[0].status == "promoted"
+        assert audit_event is not None
+        assert audit_event.action == "sheets.run_reviewed"
+    finally:
+        session.close()
+
+
+def test_sheets_writeback_service_queues_authorized_run(temp_directory: Path):
+    """Sheets writeback should queue project-scoped runs for contributors."""
+    _, session_factory = init_db(f"sqlite:///{temp_directory / 'sheets_queue.db'}")
+    session = session_factory()
+    try:
+        store = ResearchStore(session)
+        _seed_sheets_project(store)
+
+        result = SheetsWritebackService(store).handle_writeback(
+            {
+                "action": "queue_run",
+                "actor_email": "reviewer@example.com",
+                "project_slug": "sheets-project",
+                "objective": "Queued from a Sheet row.",
+                "tool_policy": {"allowed_tools": ["hal_search_memory"]},
+            }
+        )
+        session.commit()
+
+        assert result.status == "accepted"
+        assert result.queued_run_id is not None
+        run = store.get_run(result.queued_run_id)
+        audit_event = session.get(ResearchAuditEvent, result.audit_event_id)
+
+        assert run is not None
+        assert run.status == "queued"
+        assert run.initiated_by == "reviewer@example.com"
+        assert [event.event_type for event in store.list_run_events(run)] == ["run.queued"]
+        assert audit_event is not None
+        assert audit_event.action == "sheets.run_queued"
+    finally:
+        session.close()
 
 
 def test_google_sheets_api_client_uses_values_update(monkeypatch):

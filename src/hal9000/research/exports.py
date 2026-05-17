@@ -12,9 +12,15 @@ from typing import Any, Literal
 from sqlalchemy.orm import Session
 
 from hal9000.db.models import ResearchOutput, ResearchProject, ResearchRun
+from hal9000.research.graph import ResearchGraphService, render_mermaid_graph
+from hal9000.research.media import (
+    dedupe_media_references,
+    extract_media_references_from_text,
+    normalize_media_reference,
+)
 from hal9000.storage import ObjectStore
 
-ExportTarget = Literal["adam", "obsidian", "markdown", "json", "dashboard"]
+ExportTarget = Literal["adam", "obsidian", "markdown", "json", "dashboard", "graph"]
 
 EXPORT_TARGETS: tuple[ExportTarget, ...] = (
     "adam",
@@ -22,6 +28,7 @@ EXPORT_TARGETS: tuple[ExportTarget, ...] = (
     "markdown",
     "json",
     "dashboard",
+    "graph",
 )
 
 
@@ -153,6 +160,8 @@ class ResearchOutputExporter:
             return self._export_json(key_prefix, manifest, outputs)
         if target == "dashboard":
             return self._export_dashboard(key_prefix, manifest, outputs)
+        if target == "graph":
+            return self._export_graph(key_prefix, manifest, project=project, run=run)
         if target == "adam":
             return self._export_adam(key_prefix, manifest, outputs)
         return self._export_obsidian(key_prefix, manifest, outputs)
@@ -173,6 +182,7 @@ class ResearchOutputExporter:
             f"- Created at: `{manifest['created_at']}`",
             "",
         ]
+        lines.extend(_media_register_markdown(manifest.get("figures_tables", [])))
         for output in outputs:
             lines.extend(self._markdown_section(output))
 
@@ -265,6 +275,50 @@ class ResearchOutputExporter:
             manifest=manifest,
         )
 
+    def _export_graph(
+        self,
+        key_prefix: str,
+        manifest: dict[str, Any],
+        project: ResearchProject | None,
+        run: ResearchRun | None,
+    ) -> ExportResult:
+        from hal9000.db.store import ResearchStore
+
+        store = ResearchStore(self.session)
+        service = ResearchGraphService(store)
+        if run is not None:
+            graph = service.run_graph(run)
+        elif project is not None:
+            graph = service.project_graph(project)
+        else:
+            graph = service._graph_from_edges(
+                scope=manifest["scope"],
+                scope_id=manifest["scope_id"],
+                scope_label=manifest["scope_label"],
+                edges=[],
+            )
+
+        graph_payload = graph.to_dict()
+        graph_json = self._write_json(f"{key_prefix}/graph.json", graph_payload)
+        graph_mermaid = self.object_store.put_bytes(
+            f"{key_prefix}/graph.mmd",
+            render_mermaid_graph(graph).encode("utf-8"),
+            content_type="text/plain",
+        )
+        manifest["graph_summary"] = graph_payload["summary"]
+        manifest["artifacts"] = [
+            {"kind": "graph_json", "uri": graph_json.uri, "key": graph_json.key},
+            {"kind": "graph_mermaid", "uri": graph_mermaid.uri, "key": graph_mermaid.key},
+        ]
+        manifest_stored = self._write_manifest(key_prefix, manifest)
+        return ExportResult(
+            target="graph",
+            artifact_uri=manifest_stored.uri,
+            artifact_count=3,
+            output_count=manifest["output_count"],
+            manifest=manifest,
+        )
+
     def _export_obsidian(
         self,
         key_prefix: str,
@@ -320,6 +374,7 @@ class ResearchOutputExporter:
         run: ResearchRun | None,
         outputs: list[ResearchOutput],
     ) -> dict[str, Any]:
+        media_refs = self._figure_table_refs(outputs)
         return {
             "target": target,
             "schema_version": "1.0",
@@ -333,6 +388,8 @@ class ResearchOutputExporter:
             "output_ids": [output.id for output in outputs],
             "output_statuses": sorted({output.status for output in outputs}),
             "output_types": sorted({output.output_type for output in outputs}),
+            "figures_tables": media_refs,
+            "figure_table_count": len(media_refs),
         }
 
     def _key_prefix(self, scope: str, scope_id: str, target: ExportTarget) -> str:
@@ -362,6 +419,7 @@ class ResearchOutputExporter:
             "content": output.content,
             "artifact_uri": output.artifact_uri,
             "source": self._json_or_none(output.source_json),
+            "figures_tables": self._figure_table_refs_for_output(output),
             "created_by": output.created_by,
             "created_at": _iso(output.created_at),
             "updated_at": _iso(output.updated_at),
@@ -382,6 +440,7 @@ class ResearchOutputExporter:
             "created_by": output.created_by,
             "created_at": _iso(output.created_at),
             "content_length": len(output.content or ""),
+            "figure_table_count": len(self._figure_table_refs_for_output(output)),
         }
 
     def _dashboard_summary(self, outputs: list[ResearchOutput]) -> dict[str, Any]:
@@ -389,6 +448,7 @@ class ResearchOutputExporter:
             "outputs_by_status": _counts(output.status for output in outputs),
             "outputs_by_type": _counts(output.output_type for output in outputs),
             "outputs_by_format": _counts(output.format for output in outputs),
+            "figure_table_count": len(self._figure_table_refs(outputs)),
         }
 
     def _markdown_section(self, output: ResearchOutput) -> list[str]:
@@ -405,9 +465,11 @@ class ResearchOutputExporter:
             lines.extend(["```json", _pretty_json_text(output.content or "{}"), "```", ""])
         else:
             lines.extend([output.content or "", ""])
+        lines.extend(_media_register_markdown(self._figure_table_refs_for_output(output), heading="Figures/Tables"))
         return lines
 
     def _obsidian_note(self, output: ResearchOutput, manifest: dict[str, Any]) -> str:
+        media_refs = self._figure_table_refs_for_output(output)
         front_matter = {
             "hal_output_id": output.id,
             "hal_output_type": output.output_type,
@@ -416,13 +478,40 @@ class ResearchOutputExporter:
             "hal_project_id": output.project_id,
             "hal_export_target": manifest["target"],
             "hal_exported_at": manifest["created_at"],
+            "hal_figure_table_count": len(media_refs),
         }
         lines = ["---"]
         for key, value in front_matter.items():
             lines.append(f"{key}: {json.dumps(value)}")
         lines.extend(["---", "", f"# {output.title}", ""])
+        lines.extend(_media_register_markdown(media_refs, heading="Figures/Tables"))
         lines.extend(self._markdown_section(output)[1:])
         return "\n".join(lines)
+
+    def _figure_table_refs(self, outputs: list[ResearchOutput]) -> list[dict[str, Any]]:
+        """Return deduplicated figure/table refs across outputs."""
+        refs = []
+        for output in outputs:
+            refs.extend(self._figure_table_refs_for_output(output))
+        return dedupe_media_references(refs)
+
+    def _figure_table_refs_for_output(self, output: ResearchOutput) -> list[dict[str, Any]]:
+        """Extract figure/table refs from output source metadata and content."""
+        refs = []
+        source = self._json_or_none(output.source_json) or {}
+        refs.extend(_normalize_media_list(source.get("figures_tables"), output.id))
+        if output.format == "json" and output.content:
+            try:
+                payload = json.loads(output.content)
+            except json.JSONDecodeError:
+                payload = {}
+            if isinstance(payload, dict):
+                refs.extend(_normalize_media_list(payload.get("figures_tables"), output.id))
+        elif output.content:
+            for item in extract_media_references_from_text(output.content):
+                item["output_id"] = output.id
+                refs.append(item)
+        return dedupe_media_references(refs)
 
     def _json_content(self, output: ResearchOutput) -> dict[str, Any]:
         if output.content is None:
@@ -523,3 +612,35 @@ def _pretty_json_text(raw: str) -> str:
         return json.dumps(json.loads(raw), indent=2, sort_keys=True)
     except json.JSONDecodeError:
         return raw
+
+
+def _normalize_media_list(raw: Any, output_id: str) -> list[dict[str, Any]]:
+    if not isinstance(raw, list):
+        return []
+    refs = []
+    for item in raw:
+        normalized = normalize_media_reference(item)
+        if normalized:
+            normalized["output_id"] = output_id
+            refs.append(normalized)
+    return refs
+
+
+def _media_register_markdown(
+    refs: list[dict[str, Any]],
+    *,
+    heading: str = "Figure/Table Register",
+) -> list[str]:
+    if not refs:
+        return []
+    lines = [f"## {heading}", ""]
+    for ref in refs:
+        locator = ref.get("locator") or (f"p. {ref['page']}" if ref.get("page") else None)
+        locator_text = f" ({locator})" if locator else ""
+        marker = f" {ref['citation_marker']}" if ref.get("citation_marker") else ""
+        lines.append(
+            f"- {str(ref.get('kind', 'media')).title()}: {ref.get('label')}"
+            f"{marker}{locator_text} - {ref.get('caption') or ref.get('description') or ''}"
+        )
+    lines.append("")
+    return lines

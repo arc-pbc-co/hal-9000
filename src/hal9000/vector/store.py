@@ -2,15 +2,17 @@
 
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from typing import Optional
 
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from hal9000.db.models import (
     ChunkEmbedding,
     DocumentChunk,
     ExtractedClaim,
+    ResearchGraphEdge,
     ResearchOutput,
     ResearchRun,
     utc_now,
@@ -75,13 +77,16 @@ class SemanticSearchResult:
     project_id: Optional[str] = None
     embedding_provider: Optional[str] = None
     embedding_model: Optional[str] = None
+    base_score: Optional[float] = None
+    graph_boost_score: float = 0.0
+    graph_connections: list[dict[str, object]] = field(default_factory=list)
 
     def as_context_item(self, max_chars: int = 600) -> dict[str, object]:
         """Return a JSON-safe retrieval context item."""
         content = self.content.strip()
         if len(content) > max_chars:
             content = content[: max_chars - 3].rstrip() + "..."
-        return {
+        payload: dict[str, object] = {
             "target_type": self.target_type,
             "target_id": self.target_id,
             "score": round(self.score, 6),
@@ -93,6 +98,12 @@ class SemanticSearchResult:
             "embedding_provider": self.embedding_provider,
             "embedding_model": self.embedding_model,
         }
+        if self.base_score is not None:
+            payload["base_score"] = round(self.base_score, 6)
+        if self.graph_boost_score:
+            payload["graph_boost_score"] = round(self.graph_boost_score, 6)
+            payload["graph_connections"] = list(self.graph_connections)
+        return payload
 
 
 class VectorRepository:
@@ -363,16 +374,25 @@ class VectorRepository:
         project_id: Optional[str] = None,
         run_id: Optional[str] = None,
         min_score: Optional[float] = None,
+        graph_boost: bool = False,
+        graph_boost_weight: float = 0.15,
+        graph_entity_type: Optional[str] = None,
+        graph_entity_id: Optional[str] = None,
     ) -> list[SemanticSearchResult]:
         """Search claims and outputs through one semantic memory API."""
+        if limit <= 0:
+            raise ValueError("Search limit must be positive")
+        if graph_boost_weight < 0:
+            raise ValueError("Graph boost weight must not be negative")
         normalized_targets = targets or {"claims", "outputs"}
+        search_limit = max(limit, min(limit * 4, 100)) if graph_boost else limit
         results: list[SemanticSearchResult] = []
         if "claims" in normalized_targets:
             results.extend(
                 self.search_claims(
                     query_text,
                     provider,
-                    limit=limit,
+                    limit=search_limit,
                     project_id=project_id,
                     run_id=run_id,
                     min_score=min_score,
@@ -383,14 +403,114 @@ class VectorRepository:
                 self.search_outputs(
                     query_text,
                     provider,
-                    limit=limit,
+                    limit=search_limit,
                     project_id=project_id,
                     run_id=run_id,
                     min_score=min_score,
                 )
             )
+        if graph_boost:
+            results = self._apply_graph_boost(
+                results,
+                boost_weight=graph_boost_weight,
+                project_id=project_id,
+                run_id=run_id,
+                graph_entity_type=graph_entity_type,
+                graph_entity_id=graph_entity_id,
+            )
         results.sort(key=lambda result: result.score, reverse=True)
         return results[:limit]
+
+    def _apply_graph_boost(
+        self,
+        results: list[SemanticSearchResult],
+        boost_weight: float,
+        project_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        graph_entity_type: Optional[str] = None,
+        graph_entity_id: Optional[str] = None,
+    ) -> list[SemanticSearchResult]:
+        boosted: list[SemanticSearchResult] = []
+        for result in results:
+            connections = self._graph_connections_for_result(
+                result,
+                project_id=project_id,
+                run_id=run_id,
+                graph_entity_type=graph_entity_type,
+                graph_entity_id=graph_entity_id,
+            )
+            if not connections:
+                boosted.append(result)
+                continue
+            connection_score = max(float(connection["confidence"]) for connection in connections)
+            graph_boost_score = boost_weight * connection_score
+            boosted.append(
+                replace(
+                    result,
+                    score=result.score + graph_boost_score,
+                    base_score=result.score,
+                    graph_boost_score=graph_boost_score,
+                    graph_connections=connections,
+                )
+            )
+        return boosted
+
+    def _graph_connections_for_result(
+        self,
+        result: SemanticSearchResult,
+        project_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        graph_entity_type: Optional[str] = None,
+        graph_entity_id: Optional[str] = None,
+    ) -> list[dict[str, object]]:
+        result_source = and_(
+            ResearchGraphEdge.source_type == result.target_type,
+            ResearchGraphEdge.source_id == result.target_id,
+        )
+        result_target = and_(
+            ResearchGraphEdge.target_type == result.target_type,
+            ResearchGraphEdge.target_id == result.target_id,
+        )
+        query = self.session.query(ResearchGraphEdge).filter(
+            ResearchGraphEdge.status == "active",
+            or_(result_source, result_target),
+        )
+        if project_id:
+            query = query.filter(ResearchGraphEdge.project_id == project_id)
+        if run_id:
+            query = query.filter(ResearchGraphEdge.run_id == run_id)
+        if graph_entity_type and graph_entity_id:
+            focus_source = and_(
+                ResearchGraphEdge.source_type == graph_entity_type,
+                ResearchGraphEdge.source_id == graph_entity_id,
+            )
+            focus_target = and_(
+                ResearchGraphEdge.target_type == graph_entity_type,
+                ResearchGraphEdge.target_id == graph_entity_id,
+            )
+            query = query.filter(or_(focus_source, focus_target))
+
+        connections = []
+        for edge in query.order_by(ResearchGraphEdge.confidence.desc()).limit(5):
+            if edge.source_type == result.target_type and edge.source_id == result.target_id:
+                direction = "outgoing"
+                connected_type = edge.target_type
+                connected_id = edge.target_id
+            else:
+                direction = "incoming"
+                connected_type = edge.source_type
+                connected_id = edge.source_id
+            connections.append(
+                {
+                    "edge_id": edge.id,
+                    "relationship_type": edge.relationship_type,
+                    "direction": direction,
+                    "connected_type": connected_type,
+                    "connected_id": connected_id,
+                    "confidence": edge.confidence,
+                }
+            )
+        return connections
 
 
 def _cosine_similarity(left: list[float], right: list[float]) -> float:

@@ -1,5 +1,6 @@
 """Tests for research graph relationship services."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,7 @@ from hal9000.research.graph import (
     ResearchGraphService,
     edge_payload,
     normalize_graph_relationship,
+    render_mermaid_graph,
 )
 
 
@@ -78,13 +80,26 @@ def test_research_graph_service_adds_and_lists_typed_edges(temp_directory: Path)
         support_payload = edge_payload(support_edge).to_dict()
         claim_edges = service.edges_for_entity("claim", claim.id)
         material_edges = service.list_edges(relationship_type="studies-material")
+        project_graph = service.project_graph(project)
+        neighborhood = service.neighborhood("claim", claim.id, depth=1)
+        mermaid = render_mermaid_graph(neighborhood)
 
         assert support_payload["relationship_type"] == "supports"
+        assert support_payload["source_key"] == f"claim:{claim.id}"
+        assert support_payload["target_key"] == f"output:{output.id}"
         assert support_payload["project_id"] == project.id
         assert support_payload["run_id"] == run.id
         assert support_payload["evidence"]["quote"].startswith("CMSX-4")
         assert {edge.id for edge in claim_edges} == {support_edge.id, material_edge.id}
         assert material_edges[0].target_id == "CMSX-4"
+        assert project_graph.summary["node_count"] == 3
+        assert project_graph.summary["edge_count"] == 2
+        assert neighborhood.summary["edges_by_relationship"] == {
+            "studies_material": 1,
+            "supports": 1,
+        }
+        assert "flowchart LR" in mermaid
+        assert "studies_material" in mermaid
     finally:
         session.close()
 
@@ -186,3 +201,37 @@ def test_research_graph_cli_adds_and_lists_edges(temp_directory: Path):
     assert list_result.exit_code == 0, list_result.output
     assert '"relationship_type": "cites"' in list_result.output
     assert output_id in list_result.output
+
+    graph_result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(config_path),
+            "research",
+            "graph-project",
+            "graph-cli",
+            "--json",
+        ],
+        obj={},
+    )
+    assert graph_result.exit_code == 0, graph_result.output
+    graph_payload = json.loads(graph_result.output)
+    assert graph_payload["summary"]["edge_count"] == 1
+    assert graph_payload["nodes"][0]["degree"] >= 1
+
+    neighborhood_result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(config_path),
+            "research",
+            "graph-neighborhood",
+            "output",
+            output_id,
+            "--mermaid",
+        ],
+        obj={},
+    )
+    assert neighborhood_result.exit_code == 0, neighborhood_result.output
+    assert "flowchart LR" in neighborhood_result.output
+    assert "cites" in neighborhood_result.output

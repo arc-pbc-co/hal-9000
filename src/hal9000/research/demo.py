@@ -362,6 +362,14 @@ def _create_demo_document(store: ResearchStore, run_id: str) -> Document:
         ),
         source_quality_score=0.82,
         source_quality_label="high",
+        source_quality_json=json.dumps(
+            {
+                "allowed_use": True,
+                "compliance_reviewed": True,
+                "license": "HAL demo synthetic source",
+            },
+            sort_keys=True,
+        ),
     )
     store.session.add(document)
     store.session.flush()

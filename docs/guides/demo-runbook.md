@@ -58,7 +58,9 @@ hal gateway http --host 127.0.0.1 --port 9101
 ```
 
 Then point Slack slash commands at `POST /slack/command` and interactive actions
-at `POST /slack/action`. Production requests should set
+at `POST /slack/action`. Point Slack Events API callbacks at
+`POST /slack/event` for channel mentions such as `<@HAL> summary <run-id>` and
+`<@HAL> exports <run-id>`. Production requests should set
 `HAL9000_SLACK_SIGNING_SECRET` so the gateway verifies Slack signatures.
 For staging click-throughs, set `HAL9000_SLACK_USER_MAP_JSON` to map Slack
 `user_id` values to HAL reviewer emails.

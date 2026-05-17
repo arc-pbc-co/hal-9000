@@ -13,6 +13,7 @@ from typing import Any, Optional, Union
 
 import websockets
 
+from hal9000.gateway.agent_session import AgentGatewaySessionManager
 from hal9000.gateway.events import EventEmitter, EventType
 from hal9000.gateway.health import get_health_checker
 from hal9000.gateway.protocol import GatewayMessage
@@ -43,6 +44,7 @@ class HALGateway:
         router: Optional[Router] = None,
         session_manager: Optional[SessionManager] = None,
         event_emitter: Optional[EventEmitter] = None,
+        agent_session_manager: Optional[AgentGatewaySessionManager] = None,
     ) -> None:
         """Initialize the gateway server.
 
@@ -52,10 +54,14 @@ class HALGateway:
             router: Optional custom router. Creates default if not provided.
             session_manager: Optional session manager. Creates new if not provided.
             event_emitter: Optional event emitter. Creates new if not provided.
+            agent_session_manager: Optional manager for HAL agent runtime sessions.
         """
         self.host = host
         self.port = port
-        self.router = router or create_router_with_defaults()
+        self.agent_session_manager = agent_session_manager or AgentGatewaySessionManager()
+        self.router = router or create_router_with_defaults(
+            agent_session_manager=self.agent_session_manager
+        )
         self.session_manager = session_manager or SessionManager()
         self.event_emitter = event_emitter or EventEmitter()
 
@@ -119,6 +125,8 @@ class HALGateway:
             await self._server.wait_closed()
             self._server = None
 
+        await self.agent_session_manager.close_all()
+
         await self.event_emitter.emit_event(
             EventType.SYSTEM_STATUS,
             data={"status": "stopped"},
@@ -181,6 +189,8 @@ class HALGateway:
                 data={"error": str(e)},
             )
         finally:
+            await self.agent_session_manager.close_gateway_sessions(session.id)
+
             # Clean up
             self._connections.pop(session.id, None)
             self.session_manager.remove_session(session.id)

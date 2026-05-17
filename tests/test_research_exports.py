@@ -10,6 +10,7 @@ from hal9000.cli import cli
 from hal9000.db.models import init_db
 from hal9000.db.store import ResearchStore
 from hal9000.research.exports import ResearchOutputExporter
+from hal9000.research.graph import ResearchGraphService
 from hal9000.storage import LocalObjectStore
 
 
@@ -24,7 +25,7 @@ def test_exporter_writes_all_firmwide_targets(temp_directory: Path):
         project = store.create_project(name="Export Project", slug="export-project")
         run = store.create_run(objective="Package promoted outputs.", project=project)
         store.update_run_status(run, "staged", actor="worker")
-        store.stage_output(
+        brief = store.stage_output(
             title="Research Brief",
             output_type="research_brief",
             project=project,
@@ -32,7 +33,7 @@ def test_exporter_writes_all_firmwide_targets(temp_directory: Path):
             content="# Brief\n\nPromoted finding.",
             format="markdown",
         )
-        store.stage_output(
+        adam = store.stage_output(
             title="ADAM Context",
             output_type="adam_context",
             project=project,
@@ -44,10 +45,26 @@ def test_exporter_writes_all_firmwide_targets(temp_directory: Path):
                     "name": "Export Project",
                     "description": run.objective,
                     "literature_summary": {"papers_analyzed": 0, "key_findings": []},
+                    "figures_tables": [
+                        {
+                            "kind": "table",
+                            "label": "Table 1",
+                            "caption": "Promoted metrics by alloy.",
+                            "page": 4,
+                        }
+                    ],
                     "metadata": {"run_id": run.id},
                 }
             ),
             format="json",
+        )
+        ResearchGraphService(store).add_edge(
+            "output",
+            brief.id,
+            "supports",
+            "output",
+            adam.id,
+            confidence=0.75,
         )
         store.review_run_outputs(run, decision="promote", reviewer="reviewer@example.com")
         session.commit()
@@ -61,6 +78,7 @@ def test_exporter_writes_all_firmwide_targets(temp_directory: Path):
             "markdown",
             "json",
             "dashboard",
+            "graph",
         }
         assert all(result.output_count == 2 for result in results)
         for result in results:
@@ -69,6 +87,8 @@ def test_exporter_writes_all_firmwide_targets(temp_directory: Path):
             manifest = json.loads(object_store.get_bytes(manifest_key))
             assert manifest["scope"] == "run"
             assert manifest["output_count"] == 2
+            assert manifest["figure_table_count"] == 1
+            assert manifest["figures_tables"][0]["label"] == "Table 1"
 
         adam_result = next(result for result in results if result.target == "adam")
         adam_key = adam_result.manifest["artifacts"][0]["key"]
@@ -79,10 +99,32 @@ def test_exporter_writes_all_firmwide_targets(temp_directory: Path):
         dashboard_key = dashboard_result.manifest["artifacts"][0]["key"]
         dashboard_payload = json.loads(object_store.get_bytes(dashboard_key))
         assert dashboard_payload["summary"]["outputs_by_status"] == {"promoted": 2}
+        assert dashboard_payload["summary"]["figure_table_count"] == 1
+        assert dashboard_payload["rows"][1]["figure_table_count"] == 1
+
+        markdown_result = next(result for result in results if result.target == "markdown")
+        markdown_key = next(
+            artifact["key"]
+            for artifact in markdown_result.manifest["artifacts"]
+            if artifact["kind"] == "markdown_bundle"
+        )
+        markdown = object_store.get_bytes(markdown_key).decode()
+        assert "## Figure/Table Register" in markdown
+        assert "Table 1" in markdown
 
         obsidian_result = next(result for result in results if result.target == "obsidian")
         assert obsidian_result.artifact_count == 4
         assert any(artifact["kind"] == "obsidian_note" for artifact in obsidian_result.manifest["artifacts"])
+
+        graph_result = next(result for result in results if result.target == "graph")
+        graph_key = next(
+            artifact["key"]
+            for artifact in graph_result.manifest["artifacts"]
+            if artifact["kind"] == "graph_json"
+        )
+        graph_payload = json.loads(object_store.get_bytes(graph_key))
+        assert graph_payload["summary"]["edge_count"] == 1
+        assert graph_result.manifest["graph_summary"]["nodes_by_type"] == {"output": 2}
     finally:
         session.close()
 

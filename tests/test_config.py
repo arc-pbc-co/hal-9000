@@ -4,6 +4,8 @@ from pathlib import Path
 
 from hal9000.config import (
     ADAMConfig,
+    AgentConfig,
+    AppGatewayConfig,
     AuthConfig,
     CloudConfig,
     DatabaseConfig,
@@ -11,6 +13,7 @@ from hal9000.config import (
     GDriveConfig,
     ObsidianConfig,
     ProcessingConfig,
+    RetentionConfig,
     Settings,
     SourcesConfig,
     StorageConfig,
@@ -286,6 +289,111 @@ class TestGatewayConfig:
         assert config.session_timeout_minutes == 30
 
 
+class TestAppGatewayConfig:
+    """Tests for AppGatewayConfig."""
+
+    def test_default_values(self):
+        """Test default values."""
+        config = AppGatewayConfig()
+
+        assert config.slack_required is False
+        assert config.slack_signing_secret is None
+        assert config.sheets_writeback_enabled is False
+        assert config.sheets_writeback_token is None
+
+    def test_custom_values(self):
+        """Test custom values."""
+        config = AppGatewayConfig(
+            slack_required=True,
+            slack_signing_secret="slack-secret",
+            sheets_writeback_enabled=True,
+            sheets_writeback_token="sheets-token",
+        )
+
+        assert config.slack_required is True
+        assert config.slack_signing_secret == "slack-secret"
+        assert config.sheets_writeback_enabled is True
+        assert config.sheets_writeback_token == "sheets-token"
+
+
+class TestAgentConfig:
+    """Tests for AgentConfig."""
+
+    def test_default_values(self):
+        """Test default values."""
+        config = AgentConfig()
+
+        assert config.model_name == "anthropic/claude-sonnet-4-20250514"
+        assert config.reasoning_effort is None
+        assert config.max_tokens == 4096
+        assert config.timeout_seconds == 600.0
+        assert config.max_retries == 3
+        assert config.approval_timeout_seconds is None
+        assert config.max_context_tokens is None
+        assert config.compact_target_tokens is None
+        assert config.compact_preserve_last == 8
+        assert config.hf_router_base_url == "https://router.huggingface.co/v1"
+
+    def test_custom_values(self):
+        """Test custom values."""
+        config = AgentConfig(
+            model_name="openai/gpt-5.5",
+            reasoning_effort="high",
+            max_tokens=8192,
+            timeout_seconds=120.0,
+            max_retries=2,
+            approval_timeout_seconds=30.0,
+            max_context_tokens=12000,
+            compact_target_tokens=8000,
+            compact_preserve_last=6,
+            hf_router_base_url="https://router.example.com/v1",
+        )
+
+        assert config.model_name == "openai/gpt-5.5"
+        assert config.reasoning_effort == "high"
+        assert config.max_tokens == 8192
+        assert config.timeout_seconds == 120.0
+        assert config.max_retries == 2
+        assert config.approval_timeout_seconds == 30.0
+        assert config.max_context_tokens == 12000
+        assert config.compact_target_tokens == 8000
+        assert config.compact_preserve_last == 6
+        assert config.hf_router_base_url == "https://router.example.com/v1"
+
+
+class TestRetentionConfig:
+    """Tests for RetentionConfig."""
+
+    def test_default_values(self):
+        """Test default values."""
+        config = RetentionConfig()
+
+        assert config.enabled is False
+        assert config.run_event_days == 365
+        assert config.tool_call_days == 365
+        assert config.notification_days == 180
+        assert config.audit_event_days == 730
+        assert config.gateway_session_days == 30
+
+    def test_custom_values(self):
+        """Test custom values."""
+        config = RetentionConfig(
+            enabled=True,
+            run_event_days=90,
+            tool_call_days=90,
+            notification_days=30,
+            audit_event_days=365,
+            gateway_session_days=7,
+        )
+
+        assert config.enabled is True
+        assert config.run_event_days == 90
+        assert config.tool_call_days == 90
+        assert config.notification_days == 30
+        assert config.audit_event_days == 365
+        assert config.gateway_session_days == 7
+
+
 class TestSettings:
     """Tests for main Settings class."""
 
@@ -303,7 +411,10 @@ class TestSettings:
         assert isinstance(settings.storage, StorageConfig)
         assert isinstance(settings.vector, VectorConfig)
         assert isinstance(settings.gateway, GatewayConfig)
+        assert isinstance(settings.app_gateway, AppGatewayConfig)
         assert isinstance(settings.auth, AuthConfig)
+        assert isinstance(settings.agent, AgentConfig)
+        assert isinstance(settings.retention, RetentionConfig)
         assert settings.environment == "local"
         assert settings.log_level == "INFO"
         assert settings.verbose is False
@@ -384,6 +495,29 @@ class TestSettings:
 
         assert "auth.oidc_issuer_url is required when auth is enabled" in issues
         assert "auth.oidc_audience is required when auth is enabled" in issues
+
+    def test_profile_readiness_issues_for_required_app_gateway_secrets(self):
+        """Production app integrations should fail readiness when enabled without secrets."""
+        settings = Settings(
+            environment="production",
+            database={"url": "postgresql+psycopg://hal@example/db"},
+            storage={"backend": "s3", "bucket": "hal-artifacts"},
+            app_gateway={
+                "slack_required": True,
+                "sheets_writeback_enabled": True,
+            },
+        )
+
+        issues = settings.profile_readiness_issues()
+
+        assert (
+            "app_gateway.slack_signing_secret is required when Slack is required"
+            in issues
+        )
+        assert (
+            "app_gateway.sheets_writeback_token is required when Sheets writeback is enabled"
+            in issues
+        )
 
 
 class TestEnvironmentProfiles:
@@ -615,3 +749,29 @@ class TestEnvironmentVariables:
         settings = Settings()
 
         assert settings.gateway.port == 8080
+
+    def test_env_var_agent_model_name(self, monkeypatch):
+        """Test agent model from environment."""
+        monkeypatch.setenv("HAL9000_AGENT__MODEL_NAME", "openai/gpt-5.5")
+
+        settings = Settings()
+
+        assert settings.agent.model_name == "openai/gpt-5.5"
+
+    def test_env_var_app_gateway_and_retention(self, monkeypatch):
+        """Test production hardening settings from environment."""
+        monkeypatch.setenv("HAL9000_APP_GATEWAY__SLACK_REQUIRED", "true")
+        monkeypatch.setenv("HAL9000_APP_GATEWAY__SHEETS_WRITEBACK_ENABLED", "true")
+        monkeypatch.setenv("HAL9000_RETENTION__ENABLED", "true")
+        monkeypatch.setenv("HAL9000_RETENTION__NOTIFICATION_DAYS", "14")
+        monkeypatch.setenv("HAL9000_RETENTION__PDF_ARTIFACT_DAYS", "365")
+        monkeypatch.setenv("HAL9000_RETENTION__OUTPUT_ARTIFACT_DAYS", "90")
+
+        settings = Settings()
+
+        assert settings.app_gateway.slack_required is True
+        assert settings.app_gateway.sheets_writeback_enabled is True
+        assert settings.retention.enabled is True
+        assert settings.retention.notification_days == 14
+        assert settings.retention.pdf_artifact_days == 365
+        assert settings.retention.output_artifact_days == 90

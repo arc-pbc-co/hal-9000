@@ -17,7 +17,7 @@ from hal9000.research import (
 from hal9000.research.acquisition import WorkerAcquisitionResult
 from hal9000.research.budget import BudgetExceededError
 from hal9000.research.pipeline import CorpusPipelineResult, ResearchCorpusPipeline
-from hal9000.research.queue import ResearchQueueRunner
+from hal9000.research.queue import QueueWorkerService, QueueWorkerServiceConfig, ResearchQueueRunner
 from hal9000.vector import FakeEmbeddingProvider, VectorRepository
 
 
@@ -524,5 +524,38 @@ def test_queue_runner_executes_queued_runs(temp_directory: Path):
         assert all(result.succeeded for result in results)
         assert first.status == "staged"
         assert second.status == "staged"
+    finally:
+        session.close()
+
+
+def test_queue_worker_service_runs_bounded_iterations(temp_directory: Path):
+    """The packaged worker service should wrap queue polling for deployments."""
+    _, session_factory = init_db(f"sqlite:///{temp_directory / 'worker_service.db'}")
+    session = session_factory()
+    sleeps = []
+
+    try:
+        repo_root = Path(__file__).resolve().parents[1]
+        program = load_program(repo_root / "templates/research/programs/literature-review.md")
+
+        store = ResearchStore(session)
+        record = store.save_program(program)
+        run = store.create_run(objective="Service queued run.", program=record)
+
+        service = QueueWorkerService(
+            store,
+            lambda current_store: BoundedResearchWorker(current_store, actor="service-worker"),
+            QueueWorkerServiceConfig(limit=1, poll_seconds=0.25, max_iterations=2),
+            sleep_func=sleeps.append,
+        )
+        ticks = service.run()
+        session.commit()
+
+        assert [tick.iteration for tick in ticks] == [1, 2]
+        assert ticks[0].processed == 1
+        assert ticks[0].succeeded == 1
+        assert ticks[1].processed == 0
+        assert sleeps == [0.25]
+        assert run.status == "staged"
     finally:
         session.close()

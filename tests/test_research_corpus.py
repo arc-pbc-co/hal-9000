@@ -1,11 +1,13 @@
 """Tests for corpus hardening services."""
 
+import hashlib
+from datetime import timedelta
 from pathlib import Path
 
 from click.testing import CliRunner
 
 from hal9000.cli import cli
-from hal9000.db.models import Document, init_db
+from hal9000.db.models import Document, ExtractedClaim, init_db, utc_now
 from hal9000.db.store import ResearchStore
 from hal9000.research.corpus import CorpusHardeningService, report_payload
 
@@ -140,6 +142,126 @@ def test_corpus_dedupe_report_groups_duplicate_dois_and_titles(temp_directory: P
         session.close()
 
 
+def test_scheduled_source_refresh_checks_due_local_sources_and_versions(temp_directory: Path):
+    """Scheduled refresh should advance unchanged sources and version changed local files."""
+    source = temp_directory / "source.txt"
+    source.write_text("version one")
+    original_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+    _, session_factory = init_db(f"sqlite:///{temp_directory / 'refresh.db'}")
+    session = session_factory()
+
+    try:
+        document = Document(
+            source_path=str(source),
+            source_type="local",
+            file_hash=original_hash,
+            title="Refreshable Source",
+            year=2024,
+            doi="10.1000/refresh",
+            full_text="version one",
+            status="completed",
+            refresh_policy="interval",
+            refresh_interval_days=7,
+            last_refreshed_at=utc_now() - timedelta(days=14),
+            next_refresh_at=utc_now() - timedelta(days=1),
+            source_version="v1",
+        )
+        session.add(document)
+        session.flush()
+
+        service = CorpusHardeningService(ResearchStore(session))
+        unchanged = service.execute_scheduled_refresh(refreshed_by="scheduler@example.com")
+        session.flush()
+
+        assert [result.status for result in unchanged] == ["unchanged"]
+        assert document.next_refresh_at > utc_now()
+        assert session.query(Document).count() == 1
+
+        source.write_text("version two")
+        changed_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+        document.next_refresh_at = utc_now() - timedelta(seconds=1)
+        session.flush()
+        changed = service.execute_scheduled_refresh(refreshed_by="scheduler@example.com")
+        session.commit()
+
+        new_document = session.get(Document, changed[0].new_document_id)
+
+        assert changed[0].status == "new_version_detected"
+        assert changed[0].previous_file_hash == original_hash
+        assert changed[0].current_file_hash == changed_hash
+        assert document.is_current_version is False
+        assert new_document is not None
+        assert new_document.file_hash == changed_hash
+        assert new_document.supersedes_document_id == document.id
+        assert new_document.source_version == "v2"
+        assert new_document.status == "pending"
+    finally:
+        session.close()
+
+
+def test_claim_dedupe_report_groups_duplicate_claim_text(temp_directory: Path):
+    """Claim-level dedupe reports should persist duplicate extracted-claim groups."""
+    _, session_factory = init_db(f"sqlite:///{temp_directory / 'claim-dedupe.db'}")
+    session = session_factory()
+
+    try:
+        first_document = Document(
+            source_path="/papers/claim-a.pdf",
+            source_type="local",
+            file_hash="4" * 64,
+            title="Claim A",
+        )
+        second_document = Document(
+            source_path="/papers/claim-b.pdf",
+            source_type="local",
+            file_hash="5" * 64,
+            title="Claim B",
+        )
+        session.add_all([first_document, second_document])
+        session.flush()
+        session.add_all(
+            [
+                ExtractedClaim(
+                    document_id=first_document.id,
+                    claim_text="Single crystal structure improves creep resistance.",
+                    normalized_subject="single crystal structure",
+                    normalized_predicate="improves",
+                    normalized_object="creep resistance",
+                    status="staged",
+                ),
+                ExtractedClaim(
+                    document_id=second_document.id,
+                    claim_text="single-crystal structure improves creep resistance",
+                    normalized_subject="single crystal structure",
+                    normalized_predicate="improves",
+                    normalized_object="creep resistance",
+                    status="staged",
+                ),
+                ExtractedClaim(
+                    document_id=second_document.id,
+                    claim_text="Gamma prime precipitates affect deformation.",
+                    status="staged",
+                ),
+            ]
+        )
+        session.flush()
+
+        report = CorpusHardeningService(ResearchStore(session)).create_claim_dedupe_report(
+            created_by="curator@example.com"
+        )
+        session.commit()
+
+        payload = report_payload(report)
+
+        assert report.report_type == "claim_duplicates"
+        assert report.duplicate_group_count >= 1
+        assert payload["duplicate_claim_count"] == 2
+        assert payload["created_by"] == "curator@example.com"
+        assert any(group["match_type"] == "claim_triple" for group in payload["groups"])
+    finally:
+        session.close()
+
+
 def test_corpus_hardening_cli_commands(temp_directory: Path):
     """CLI should harden documents and create dedupe reports."""
     db_path = temp_directory / "corpus_cli.db"
@@ -207,3 +329,96 @@ def test_corpus_hardening_cli_commands(temp_directory: Path):
     )
     assert report_result.exit_code == 0, report_result.output
     assert '"duplicate_document_count": 2' in report_result.output
+
+
+def test_corpus_refresh_and_claim_dedupe_cli_commands(temp_directory: Path):
+    """CLI should execute due source refreshes and claim-level dedupe reports."""
+    db_path = temp_directory / "corpus_refresh_cli.db"
+    config_path = temp_directory / "refresh_config.yaml"
+    source = temp_directory / "refresh-source.txt"
+    source.write_text("stable source")
+    source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+    config_path.write_text(
+        f"""hal9000:
+  database:
+    url: sqlite:///{db_path}
+"""
+    )
+    _, session_factory = init_db(f"sqlite:///{db_path}")
+    session = session_factory()
+    try:
+        refresh_document = Document(
+            source_path=str(source),
+            source_type="local",
+            file_hash=source_hash,
+            title="CLI Refresh Source",
+            refresh_policy="interval",
+            refresh_interval_days=3,
+            last_refreshed_at=utc_now() - timedelta(days=6),
+            next_refresh_at=utc_now() - timedelta(days=1),
+            status="completed",
+        )
+        first_claim_document = Document(
+            source_path="/papers/claim-cli-a.pdf",
+            source_type="local",
+            file_hash="6" * 64,
+            title="Claim CLI A",
+        )
+        second_claim_document = Document(
+            source_path="/papers/claim-cli-b.pdf",
+            source_type="local",
+            file_hash="7" * 64,
+            title="Claim CLI B",
+        )
+        session.add_all([refresh_document, first_claim_document, second_claim_document])
+        session.flush()
+        session.add_all(
+            [
+                ExtractedClaim(
+                    document_id=first_claim_document.id,
+                    claim_text="Rhenium additions improve creep life.",
+                    status="staged",
+                ),
+                ExtractedClaim(
+                    document_id=second_claim_document.id,
+                    claim_text="rhenium additions improve creep life",
+                    status="staged",
+                ),
+            ]
+        )
+        session.commit()
+    finally:
+        session.close()
+
+    runner = CliRunner()
+    refresh_result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(config_path),
+            "research",
+            "refresh-sources",
+            "--json",
+        ],
+        obj={},
+    )
+    assert refresh_result.exit_code == 0, refresh_result.output
+    assert '"status": "unchanged"' in refresh_result.output
+
+    claim_report_result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(config_path),
+            "research",
+            "dedupe-report",
+            "--claims",
+            "--created-by",
+            "curator@example.com",
+            "--json",
+        ],
+        obj={},
+    )
+    assert claim_report_result.exit_code == 0, claim_report_result.output
+    assert '"report_type": "claim_duplicates"' in claim_report_result.output
+    assert '"duplicate_claim_count": 2' in claim_report_result.output

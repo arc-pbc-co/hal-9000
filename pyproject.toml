@@ -70,6 +70,10 @@ gdrive = [
     "google-api-python-client>=2.0.0",
     "google-auth-oauthlib>=1.0.0",
 ]
+agent = [
+    "litellm>=1.83.0",
+    "huggingface_hub>=1.0.0",
+]
 postgres = [
     "psycopg[binary]>=3.2.0",
 ]

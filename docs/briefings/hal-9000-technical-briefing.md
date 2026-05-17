@@ -168,9 +168,9 @@ Review is now a first-class workflow. Reviewers can:
 
 The lightweight browser review UI exposes review queue, output detail, comments,
 review actions, and audit dashboards. The Slack app service and HTTP gateway
-support slash commands and interactive button actions for review workflows.
-Sheets sync jobs produce non-CLI operational views for runs, review queue,
-outputs, and audit history.
+support slash commands, channel event callbacks, run summaries, export links,
+and interactive button actions for review workflows. Sheets sync jobs produce
+non-CLI operational views for runs, review queue, outputs, and audit history.
 
 This is the shape of the firm-wide research OS: one shared backend, multiple
 interfaces, and a consistent permission/audit model.
@@ -181,10 +181,12 @@ Slack is intended to be the fast collaboration surface:
 
 - `/hal review <project_slug>` shows review-ready work.
 - `/hal status <run_id>` reports run status.
-- `/hal queue <project_slug> <objective>` is planned for run creation from
-  Slack.
+- `/hal summary <run_id>` posts a compact channel-ready run summary.
+- `/hal exports <run_id>` posts manifest and artifact links from export events.
+- `/hal queue <project_slug> <objective>` creates a run from Slack.
 - Buttons support promote, reject, request changes, and comments.
-- Gateway routes verify Slack signatures and map Slack users to HAL users.
+- Gateway routes verify Slack signatures, accept Events API callbacks, and map
+  Slack users to HAL users.
 
 Google Sheets is intended to be the low-friction cockpit for non-CLI users:
 
@@ -195,8 +197,8 @@ Google Sheets is intended to be the low-friction cockpit for non-CLI users:
 - Cost/tool-call and acquisition telemetry views.
 
 The current implementation supports native sync jobs for `runs`,
-`review_queue`, `outputs`, and `audit`. Sheets writeback for comments,
-decisions, and run queueing remains on the roadmap.
+`review_queue`, `outputs`, and `audit`, plus token-gated Sheets writeback for
+comments, review decisions, and run queueing through the app gateway.
 
 ## Deployment And Operations
 
@@ -245,8 +247,7 @@ polish:
 - Scheduled source refresh execution.
 - Claim-level deduplication reports.
 - Richer figure/table extraction and export rendering.
-- Slack/Sheets production webhook polish.
-- Sheets writeback for comments, decisions, and run queueing.
+- Slack/Sheets staging verification and production webhook polish.
 - Retention policy for PDFs, artifacts, logs, and generated outputs.
 - Secrets management for providers, Slack, Sheets, and model APIs.
 - Compliance review for copyrighted PDFs and generated summaries.

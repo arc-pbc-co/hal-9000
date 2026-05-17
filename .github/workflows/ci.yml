@@ -35,18 +35,31 @@ jobs:
             src/hal9000/config.py \
             src/hal9000/db \
             src/hal9000/gateway \
+            src/hal9000/release.py \
             src/hal9000/research \
+            src/hal9000/security.py \
             src/hal9000/storage \
             src/hal9000/vector \
             tests/gateway/test_http.py \
             tests/test_config.py \
             tests/test_deployment_manifests.py \
             tests/test_object_store.py \
+            tests/test_release.py \
             tests/test_research*.py \
+            tests/test_security.py \
             tests/test_vector_store.py
 
       - name: Run tests
         run: python -m pytest -q
+
+      - name: Type check release-critical surfaces
+        run: |
+          python -m mypy \
+            src/hal9000/release.py \
+            src/hal9000/security.py \
+            src/hal9000/research/compliance.py \
+            src/hal9000/research/queue.py \
+            src/hal9000/research/retention.py
 
       - name: Build docs
         run: python -m mkdocs build --strict

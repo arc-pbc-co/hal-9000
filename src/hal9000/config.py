@@ -181,6 +181,27 @@ class GatewayConfig(BaseSettings):
     )
 
 
+class AppGatewayConfig(BaseSettings):
+    """HTTP app gateway configuration for Slack and Sheets-facing routes."""
+
+    slack_required: bool = Field(
+        default=False,
+        description="Require Slack request signing for staging/production readiness checks",
+    )
+    slack_signing_secret: Optional[str] = Field(
+        default=None,
+        description="Slack signing secret for request verification",
+    )
+    sheets_writeback_enabled: bool = Field(
+        default=False,
+        description="Enable the inbound Google Sheets writeback webhook route",
+    )
+    sheets_writeback_token: Optional[str] = Field(
+        default=None,
+        description="Bearer token accepted by the Sheets writeback webhook route",
+    )
+
+
 class AuthConfig(BaseSettings):
     """Authentication and OIDC claim mapping configuration."""
 
@@ -199,6 +220,86 @@ class AuthConfig(BaseSettings):
     team_group_prefix: str = Field(
         default="hal:",
         description="Only groups with this prefix are synced as HAL team memberships",
+    )
+
+
+class AgentConfig(BaseSettings):
+    """Agent runtime and model-provider configuration."""
+
+    model_name: str = Field(
+        default="anthropic/claude-sonnet-4-20250514",
+        description="Default LiteLLM-compatible model id for HAL agent sessions",
+    )
+    reasoning_effort: Optional[str] = Field(
+        default=None,
+        description="Optional reasoning effort forwarded when the selected provider supports it",
+    )
+    max_tokens: int = Field(default=4096, description="Maximum tokens for agent model responses")
+    timeout_seconds: float = Field(default=600.0, description="Model request timeout in seconds")
+    max_retries: int = Field(default=3, description="Maximum provider attempts per model request")
+    approval_timeout_seconds: Optional[float] = Field(
+        default=None,
+        description="Optional timeout for human approval of gated agent tools",
+    )
+    max_context_tokens: Optional[int] = Field(
+        default=None,
+        description="Estimated input-token budget that triggers agent context compaction",
+    )
+    compact_target_tokens: Optional[int] = Field(
+        default=None,
+        description="Estimated token target after agent context compaction",
+    )
+    compact_preserve_last: int = Field(
+        default=8,
+        description="Recent message count to preserve when compacting agent context",
+    )
+    hf_router_base_url: str = Field(
+        default="https://router.huggingface.co/v1",
+        description="OpenAI-compatible Hugging Face Router base URL",
+    )
+
+
+class RetentionConfig(BaseSettings):
+    """Production retention policy for operational HAL records."""
+
+    enabled: bool = Field(
+        default=False,
+        description="Allow explicit retention apply commands to delete expired records",
+    )
+    run_event_days: int = Field(
+        default=365,
+        ge=0,
+        description="Days to retain research run ledger events",
+    )
+    tool_call_days: int = Field(
+        default=365,
+        ge=0,
+        description="Days to retain durable tool-call accounting records",
+    )
+    notification_days: int = Field(
+        default=180,
+        ge=0,
+        description="Days to retain collaboration notification rows",
+    )
+    audit_event_days: int = Field(
+        default=730,
+        ge=0,
+        description="Days to retain review and collaboration audit events",
+    )
+    gateway_session_days: int = Field(
+        default=30,
+        ge=0,
+        description="Days to retain persisted gateway sessions after last activity",
+    )
+    pdf_artifact_days: int = Field(
+        default=2555,
+        ge=0,
+        description="Days to retain object-store PDFs and source artifacts",
+    )
+    output_artifact_days: int = Field(
+        default=1095,
+        ge=0,
+        description="Days to retain generated output artifacts in object storage",
     )
 
 
@@ -230,7 +331,10 @@ class Settings(BaseSettings):
     vector: VectorConfig = Field(default_factory=VectorConfig)
     acquisition: AcquisitionConfig = Field(default_factory=AcquisitionConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
+    app_gateway: AppGatewayConfig = Field(default_factory=AppGatewayConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
+    agent: AgentConfig = Field(default_factory=AgentConfig)
+    retention: RetentionConfig = Field(default_factory=RetentionConfig)
 
     # Anthropic API configuration
     anthropic_api_key: Optional[str] = Field(
@@ -279,6 +383,9 @@ class Settings(BaseSettings):
             return issues
 
         if environment in {"staging", "production"}:
+            from hal9000.security import create_secret_manager_from_settings, secret_value
+
+            secret_manager = create_secret_manager_from_settings(self)
             if not self.database.url.startswith("postgresql+psycopg://"):
                 issues.append("database.url should use postgresql+psycopg:// for staging/production")
             if self.storage.backend != "s3":
@@ -292,6 +399,20 @@ class Settings(BaseSettings):
                     issues.append("auth.oidc_issuer_url is required when auth is enabled")
                 if not self.auth.oidc_audience:
                     issues.append("auth.oidc_audience is required when auth is enabled")
+            if self.app_gateway.slack_required and not secret_value(
+                "slack",
+                secret_manager=secret_manager,
+            ):
+                issues.append(
+                    "app_gateway.slack_signing_secret is required when Slack is required"
+                )
+            if self.app_gateway.sheets_writeback_enabled and not secret_value(
+                "google_sheets",
+                secret_manager=secret_manager,
+            ):
+                issues.append(
+                    "app_gateway.sheets_writeback_token is required when Sheets writeback is enabled"
+                )
 
         return issues
 

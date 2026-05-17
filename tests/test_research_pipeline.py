@@ -46,6 +46,8 @@ def test_research_corpus_pipeline_chunks_embeds_and_extracts_claims(temp_directo
             full_text=(
                 "Single crystal samples showed superior creep resistance at elevated "
                 "temperature compared with directionally solidified samples. "
+                "Figure 2. Creep rupture comparison across heat treatments.\n"
+                "Table 1: Stress normalized rupture life by alloy condition.\n"
                 "Directional solidification reduced defect density in test coupons."
             ),
             status="completed",
@@ -56,16 +58,23 @@ def test_research_corpus_pipeline_chunks_embeds_and_extracts_claims(temp_directo
         result = ResearchCorpusPipeline(
             store,
             embedding_provider=FakeEmbeddingProvider(dimension=8),
-            chunk_size=80,
+            chunk_size=400,
             chunk_overlap=10,
         ).execute(run)
         session.commit()
+
+        metadata = json.loads(run.chunks[0].extraction_metadata)
+        claim_provenance = json.loads(run.claims[0].provenance_json)
 
         assert result.document_ids == [document.id]
         assert len(result.chunk_ids) >= 1
         assert len(result.embedding_ids) == len(result.chunk_ids)
         assert len(result.claim_ids) == 2
         assert run.chunks[0].embeddings[0].embedding_dim == 8
+        assert metadata["figures"][0]["label"] == "Figure 2"
+        assert metadata["tables"][0]["label"] == "Table 1"
+        assert claim_provenance["figures"][0]["caption"] == "Creep rupture comparison across heat treatments."
+        assert claim_provenance["tables"][0]["caption"] == "Stress normalized rupture life by alloy condition."
         assert run.claims[0].claim_text.startswith("Single crystal")
         assert run.claims[0].evidence_links[0].locator.startswith("chunk")
         assert "corpus.prepared" in [event.event_type for event in run.events]

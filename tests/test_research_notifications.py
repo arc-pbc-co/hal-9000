@@ -118,14 +118,22 @@ def test_slack_webhook_adapter_posts_compact_payload(monkeypatch, temp_directory
             body="Review output.",
             recipient_email="reviewer@example.com",
             channel="slack",
-            payload={"output_ids": ["out-1", "out-2"]},
+            payload={
+                "channel_id": "CDEV",
+                "output_ids": ["out-1", "out-2"],
+                "export_links": [
+                    {"target": "json", "uri": "hal-local://exports/run.json"},
+                ],
+            },
         )
 
         result = SlackWebhookDeliveryAdapter("https://hooks.example/slack").deliver(notification)
 
         assert result.status == "sent"
         assert posted["url"] == "https://hooks.example/slack"
+        assert posted["json"]["channel"] == "CDEV"
         assert posted["json"]["text"] == "Run ready"
         assert posted["json"]["blocks"][2]["fields"][2]["text"] == "*Outputs:*\n2"
+        assert "hal-local://exports/run.json" in posted["json"]["blocks"][2]["fields"][3]["text"]
     finally:
         session.close()
