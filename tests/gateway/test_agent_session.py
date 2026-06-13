@@ -9,11 +9,13 @@ from typing import Any
 
 import pytest
 import websockets
+from sqlalchemy.exc import OperationalError
 
 from hal9000.agent import (
     AgentEventType,
     AgentModelResponse,
     AgentToolCall,
+    AgentToolContext,
     AgentToolResult,
     AgentToolRouter,
     AgentToolSpec,
@@ -65,6 +67,23 @@ class WaitingModelClient:
 
 def _empty_router(_payload) -> AgentToolRouter:
     return AgentToolRouter()
+
+
+class LockedLedger:
+    """Ledger double that behaves like a temporarily locked SQLite database."""
+
+    def __init__(self) -> None:
+        self.record_calls = 0
+
+    def record_event(self, _session, _event) -> bool:
+        self.record_calls += 1
+        raise OperationalError("INSERT", {}, RuntimeError("database is locked"))
+
+    def replay_events(self, **_kwargs) -> list[dict[str, Any]]:
+        raise OperationalError("SELECT", {}, RuntimeError("database is locked"))
+
+    def latest_history(self, **_kwargs) -> list[dict[str, Any]]:
+        raise OperationalError("SELECT", {}, RuntimeError("database is locked"))
 
 
 @pytest.mark.asyncio
@@ -138,6 +157,37 @@ async def test_agent_gateway_session_submit_replay_history_and_compact() -> None
         assert compacted.data["summary"] == "Short gateway summary."
         assert [event["type"] for event in replayed][-1] == "compacted"
         assert model.calls[0]["messages"][1]["content"] == "Status?"
+    finally:
+        await manager.close_all()
+
+
+@pytest.mark.asyncio
+async def test_live_agent_replay_uses_memory_when_run_ledger_is_locked() -> None:
+    """Live cockpit replay/history should not fail on transient SQLite ledger locks."""
+    ledger = LockedLedger()
+    model = ScriptedModelClient([AgentModelResponse(content="Live memory is available.")])
+    manager = AgentGatewaySessionManager(
+        model_client_factory=lambda _payload: model,
+        tool_router_factory=_empty_router,
+        tool_context_factory=lambda _payload: AgentToolContext(),
+        run_ledger=ledger,
+    )
+
+    try:
+        session = await manager.create_session(
+            session_id="agent-locked-ledger",
+            run_id="run-locked-ledger",
+        )
+        await session.submit("Replay while the ledger is locked.")
+        await session.wait_for_event(AgentEventType.TURN_COMPLETE)
+
+        replayed = await session.durable_replay()
+        history = await session.durable_history(include_system=False)
+
+        assert [event["type"] for event in replayed][-1] == "turn_complete"
+        assert [message["role"] for message in history] == ["user", "assistant"]
+        assert history[-1]["content"] == "Live memory is available."
+        assert session._ledger_event_index == 0
     finally:
         await manager.close_all()
 

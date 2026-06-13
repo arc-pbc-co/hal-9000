@@ -198,6 +198,23 @@ class AgentRunLedger:
         return False
 
 
+def is_sqlite_database_locked(exc: BaseException) -> bool:
+    """Return whether an exception chain represents SQLite lock contention."""
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        message = str(current).lower()
+        if "database is locked" in message or "database table is locked" in message:
+            return True
+        current = (
+            getattr(current, "orig", None)
+            or getattr(current, "__cause__", None)
+            or getattr(current, "__context__", None)
+        )
+    return False
+
+
 def _json_object(raw_value: str | None) -> dict[str, Any]:
     if not raw_value:
         return {}

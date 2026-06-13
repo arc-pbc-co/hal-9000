@@ -29,7 +29,7 @@ from hal9000.agent.events import utc_now
 from hal9000.config import get_settings
 from hal9000.db.models import init_db
 from hal9000.db.store import ResearchStore
-from hal9000.gateway.agent_ledger import AgentRunLedger
+from hal9000.gateway.agent_ledger import AgentRunLedger, is_sqlite_database_locked
 from hal9000.gateway.protocol import GatewayMessage
 from hal9000.gateway.session import Session
 from hal9000.security import create_secret_manager_from_settings
@@ -207,16 +207,26 @@ class AgentGatewaySession:
         after_sequence: int | None = None,
         limit: int | None = None,
     ) -> list[dict[str, Any]]:
-        """Flush pending events and replay from the run ledger when available."""
-        await self.flush_ledger()
+        """Replay live events first, falling back to the run ledger after shutdown."""
         if self.run_ledger is None or not self.run_id:
             return self.replay(after_sequence=after_sequence, limit=limit)
-        events = self.run_ledger.replay_events(
-            run_id=self.run_id,
-            agent_session_id=self.id,
-            after_sequence=after_sequence,
-            limit=limit,
-        )
+
+        if self._runtime_task is not None and not self._runtime_task.done():
+            return self.replay(after_sequence=after_sequence, limit=limit)
+
+        await self.flush_ledger()
+        try:
+            events = self.run_ledger.replay_events(
+                run_id=self.run_id,
+                agent_session_id=self.id,
+                after_sequence=after_sequence,
+                limit=limit,
+            )
+        except Exception as exc:
+            self._ledger_errors.append(exc)
+            if is_sqlite_database_locked(exc):
+                return self.replay(after_sequence=after_sequence, limit=limit)
+            raise
         return events or self.replay(after_sequence=after_sequence, limit=limit)
 
     def history(self, *, include_system: bool = True) -> list[dict[str, Any]]:
@@ -227,15 +237,25 @@ class AgentGatewaySession:
         return [message for message in messages if message.get("role") != "system"]
 
     async def durable_history(self, *, include_system: bool = True) -> list[dict[str, Any]]:
-        """Flush pending events and return history from the run ledger when available."""
-        await self.flush_ledger()
+        """Return live history first, falling back to the run ledger after shutdown."""
         if self.run_ledger is None or not self.run_id:
             return self.history(include_system=include_system)
-        history = self.run_ledger.latest_history(
-            run_id=self.run_id,
-            agent_session_id=self.id,
-            include_system=include_system,
-        )
+
+        if self._runtime_task is not None and not self._runtime_task.done():
+            return self.history(include_system=include_system)
+
+        await self.flush_ledger()
+        try:
+            history = self.run_ledger.latest_history(
+                run_id=self.run_id,
+                agent_session_id=self.id,
+                include_system=include_system,
+            )
+        except Exception as exc:
+            self._ledger_errors.append(exc)
+            if is_sqlite_database_locked(exc):
+                return self.history(include_system=include_system)
+            raise
         return history or self.history(include_system=include_system)
 
     async def next_event(self, timeout: float | None = None) -> AgentEvent:
@@ -291,7 +311,14 @@ class AgentGatewaySession:
             persisted = 0
             while self._ledger_event_index < len(self.runtime.emitted_events):
                 event = self.runtime.emitted_events[self._ledger_event_index]
-                if self.run_ledger.record_event(self, event):
+                try:
+                    recorded = self.run_ledger.record_event(self, event)
+                except Exception as exc:
+                    self._ledger_errors.append(exc)
+                    if is_sqlite_database_locked(exc):
+                        break
+                    raise
+                if recorded:
                     persisted += 1
                 self._ledger_event_index += 1
             return persisted
