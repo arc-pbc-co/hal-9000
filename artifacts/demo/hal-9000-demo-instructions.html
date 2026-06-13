@@ -253,7 +253,10 @@ python3 -m alembic upgrade head</code></pre>
 python3 -m hal9000.cli gateway http --host 127.0.0.1 --port 9101</code></pre>
       <p>If <code>lsof</code> already shows a Python/HAL process on <code>9101</code>, the cockpit is already running; open <code>http://127.0.0.1:9101/ui</code> and continue. To restart cleanly, stop that process with <code>kill &lt;PID&gt;</code>, or use <code>--port 9104</code> and open <code>http://127.0.0.1:9104/ui</code>.</p>
       <h3>Terminal B: static artifact server</h3>
-      <pre><code>python3 -m http.server 9102 --bind 127.0.0.1 --directory "$PWD"</code></pre>
+      <pre><code>lsof -nP -iTCP:9102 -sTCP:LISTEN
+
+python3 -m http.server 9102 --bind 127.0.0.1 --directory "$PWD"</code></pre>
+      <p>If <code>lsof</code> already shows a Python process on <code>9102</code>, the deck server is already running; open the deck URL below and continue. To restart cleanly, stop that process with <code>kill &lt;PID&gt;</code>, or use port <code>9105</code> and open the deck URL with <code>9105</code> instead of <code>9102</code>.</p>
       <h3>Open these URLs</h3>
       <pre><code>http://127.0.0.1:9102/artifacts/presentations/hal-9000-general-demo.html
 http://127.0.0.1:9101/ui</code></pre>
@@ -330,7 +333,7 @@ python3 -m hal9000.cli research export-run &lt;RUN_ID&gt; \
       <h2>Fast fixes during rehearsal.</h2>
       <ul>
         <li><strong>Old styling:</strong> hard refresh the browser tab.</li>
-        <li><strong>Port already in use:</strong> the gateway is already running, or another process owns <code>9101</code>. Run <code>lsof -nP -iTCP:9101 -sTCP:LISTEN</code>, open the existing cockpit, stop it with <code>kill &lt;PID&gt;</code>, or start HAL with <code>--port 9104</code>.</li>
+        <li><strong>Port already in use:</strong> the gateway or deck server is already running, or another process owns the port. Run <code>lsof -nP -iTCP:9101 -sTCP:LISTEN</code> for the cockpit and <code>lsof -nP -iTCP:9102 -sTCP:LISTEN</code> for the deck. Open the existing URL, stop it with <code>kill &lt;PID&gt;</code>, or use <code>9104</code> for the cockpit and <code>9105</code> for the deck.</li>
         <li><strong>Empty review queue:</strong> re-run <code>demo-seed</code> with the same <code>hal-demo</code> project slug.</li>
         <li><strong>Live acquisition fails:</strong> continue with seeded data; live acquisition is optional for the demo.</li>
         <li><strong>Reset everything:</strong> stop servers and remove <code>.hal9000_demo</code>, then rerun the setup.</li>

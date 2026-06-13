@@ -59,8 +59,15 @@ that process with `kill <PID>`, or use `--port 9104` and open
 Terminal B:
 
 ```bash
+lsof -nP -iTCP:9102 -sTCP:LISTEN
+
 python3 -m http.server 9102 --bind 127.0.0.1 --directory "$PWD"
 ```
+
+If `lsof` already shows a Python process on `9102`, the deck server is already
+running; open the deck URL below and continue. To restart cleanly, stop that
+process with `kill <PID>`, or use port `9105` and open the deck URL with `9105`
+instead of `9102`.
 
 Open:
 
@@ -134,9 +141,11 @@ python3 -m hal9000.cli research export-run <RUN_ID> \
 ## Troubleshooting
 
 - Old styling: hard refresh the browser tab.
-- Port already in use: the gateway is already running, or another process owns
-  `9101`. Run `lsof -nP -iTCP:9101 -sTCP:LISTEN`, open the existing cockpit,
-  stop it with `kill <PID>`, or start HAL with `--port 9104`.
+- Port already in use: the gateway or deck server is already running, or another
+  process owns the port. Run `lsof -nP -iTCP:9101 -sTCP:LISTEN` for the cockpit
+  and `lsof -nP -iTCP:9102 -sTCP:LISTEN` for the deck. Open the existing URL,
+  stop it with `kill <PID>`, or use `9104` for the cockpit and `9105` for the
+  deck.
 - Empty review queue: re-run `demo-seed` with `hal-demo`.
 - Live acquisition fails: continue with seeded data.
 - Full reset: stop servers and remove `.hal9000_demo`.
