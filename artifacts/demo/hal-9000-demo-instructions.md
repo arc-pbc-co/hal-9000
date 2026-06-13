@@ -20,6 +20,8 @@ Run from the HAL repo root:
 ```bash
 cd /path/to/hal-9000
 
+python3 -m pip install -e '.[agent]'
+
 export HAL9000_DEMO_ROOT="${PWD}/.hal9000_demo"
 mkdir -p "$HAL9000_DEMO_ROOT"
 
@@ -146,6 +148,8 @@ python3 -m hal9000.cli research export-run <RUN_ID> \
   and `lsof -nP -iTCP:9102 -sTCP:LISTEN` for the deck. Open the existing URL,
   stop it with `kill <PID>`, or use `9104` for the cockpit and `9105` for the
   deck.
+- `LiteLLM is required`: run `python3 -m pip install -e '.[agent]'`, then restart
+  the HAL app gateway.
 - Empty review queue: re-run `demo-seed` with `hal-demo`.
 - Live acquisition fails: continue with seeded data.
 - Full reset: stop servers and remove `.hal9000_demo`.

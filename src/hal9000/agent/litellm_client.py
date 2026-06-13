@@ -142,6 +142,9 @@ def resolve_litellm_params(
     """Resolve HAL model ids to LiteLLM completion kwargs."""
     if model_name.startswith("anthropic/"):
         params: dict[str, Any] = {"model": model_name}
+        api_key = secret_value("anthropic", secret_manager=secret_manager)
+        if api_key:
+            params["api_key"] = api_key
         effort = _normalize_effort(reasoning_effort)
         if effort:
             if effort not in _ANTHROPIC_EFFORTS:
@@ -157,6 +160,9 @@ def resolve_litellm_params(
 
     if model_name.startswith("openai/"):
         params = {"model": model_name}
+        api_key = secret_value("openai", secret_manager=secret_manager)
+        if api_key:
+            params["api_key"] = api_key
         effort = _normalize_effort(reasoning_effort)
         if effort:
             if effort not in _OPENAI_EFFORTS:

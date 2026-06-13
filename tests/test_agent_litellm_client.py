@@ -24,11 +24,32 @@ def test_resolve_litellm_params_for_anthropic_with_effort():
     assert params["output_config"] == {"effort": "high"}
 
 
+def test_resolve_litellm_params_for_anthropic_uses_secret_manager():
+    """ARC-prefixed Anthropic secrets should be forwarded to LiteLLM."""
+    manager = MappingSecretManager({"HAL9000_ANTHROPIC_API_KEY": "managed-anthropic"})
+
+    params = resolve_litellm_params(
+        "anthropic/claude-opus-4-8",
+        secret_manager=manager,
+    )
+
+    assert params["api_key"] == "managed-anthropic"
+
+
 def test_resolve_litellm_params_for_openai_with_effort():
     """OpenAI models should forward reasoning_effort top-level."""
     params = resolve_litellm_params("openai/gpt-5.5", reasoning_effort="xhigh")
 
     assert params == {"model": "openai/gpt-5.5", "reasoning_effort": "xhigh"}
+
+
+def test_resolve_litellm_params_for_openai_uses_secret_manager():
+    """ARC-prefixed OpenAI secrets should be forwarded to LiteLLM."""
+    manager = MappingSecretManager({"HAL9000_OPENAI_API_KEY": "managed-openai"})
+
+    params = resolve_litellm_params("openai/gpt-5.5", secret_manager=manager)
+
+    assert params == {"model": "openai/gpt-5.5", "api_key": "managed-openai"}
 
 
 def test_resolve_litellm_params_for_gemini_with_effort(monkeypatch):
