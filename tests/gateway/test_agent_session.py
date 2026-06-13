@@ -68,6 +68,44 @@ def _empty_router(_payload) -> AgentToolRouter:
 
 
 @pytest.mark.asyncio
+async def test_agent_gateway_default_context_attaches_store_and_project_run(temp_directory) -> None:
+    """Default gateway sessions should give HAL tools a store and run context."""
+    db_url = f"sqlite:///{temp_directory / 'agent_context.db'}"
+    _, session_factory = init_db(db_url)
+    db_session = session_factory()
+    try:
+        store = ResearchStore(db_session)
+        project = store.create_project("Agent Project", "agent-project")
+        db_session.commit()
+        project_id = project.id
+    finally:
+        db_session.close()
+
+    manager = AgentGatewaySessionManager(
+        settings=SimpleNamespace(database=SimpleNamespace(url=db_url)),
+        model_client_factory=lambda _payload: ScriptedModelClient([]),
+        tool_router_factory=_empty_router,
+    )
+
+    try:
+        session = await manager.create_session(
+            session_id="context-store",
+            user_id="agent@example.com",
+            metadata={"project_slug": "agent-project", "objective": "Research through gateway."},
+        )
+
+        context = session.runtime.tool_context
+        assert context.store is not None
+        assert context.run is not None
+        assert session.run_id == context.run.id
+        assert context.run.project_id == project_id
+        assert context.run.objective == "Research through gateway."
+        assert context.metadata["settings"] is manager.settings
+    finally:
+        await manager.close_all()
+
+
+@pytest.mark.asyncio
 async def test_agent_gateway_session_submit_replay_history_and_compact() -> None:
     """Gateway sessions should expose submit, replay, history, and compaction APIs."""
     model = ScriptedModelClient([AgentModelResponse(content="HAL is online.")])

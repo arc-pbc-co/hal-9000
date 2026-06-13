@@ -27,6 +27,8 @@ from hal9000.agent import (
 )
 from hal9000.agent.events import utc_now
 from hal9000.config import get_settings
+from hal9000.db.models import init_db
+from hal9000.db.store import ResearchStore
 from hal9000.gateway.agent_ledger import AgentRunLedger
 from hal9000.gateway.protocol import GatewayMessage
 from hal9000.gateway.session import Session
@@ -158,6 +160,7 @@ class AgentGatewaySession:
             if self._ledger_task is not None and not self._ledger_task.done():
                 self._ledger_task.cancel()
                 await asyncio.gather(self._ledger_task, return_exceptions=True)
+            self._close_tool_context()
             return
 
         await self.submission_queue.put(AgentOperation(type=AgentOperationType.SHUTDOWN))
@@ -171,6 +174,14 @@ class AgentGatewaySession:
             if self._ledger_task is not None and not self._ledger_task.done():
                 self._ledger_task.cancel()
                 await asyncio.gather(self._ledger_task, return_exceptions=True)
+            self._close_tool_context()
+
+    def _close_tool_context(self) -> None:
+        store = getattr(self.runtime.tool_context, "store", None)
+        session = getattr(store, "session", None)
+        close = getattr(session, "close", None)
+        if callable(close):
+            close()
 
     def replay(
         self,
@@ -321,7 +332,16 @@ class AgentGatewaySessionManager:
         self.loop_config_factory = loop_config_factory or self._default_loop_config
         self._run_ledger = run_ledger
         database_settings = getattr(self.settings, "database", None)
-        self._database_url = database_url or getattr(database_settings, "url", None)
+        settings_database_url = getattr(database_settings, "url", None)
+        if database_url:
+            self._database_url = database_url
+            self._session_factory = init_db(database_url)[1]
+        elif run_ledger is not None:
+            self._database_url = None
+            self._session_factory = getattr(run_ledger, "_session_factory", None)
+        else:
+            self._database_url = settings_database_url
+            self._session_factory = init_db(settings_database_url)[1] if settings_database_url else None
         self._enable_run_ledger = enable_run_ledger
         self.ready_timeout_seconds = ready_timeout_seconds
         self._sessions: dict[str, AgentGatewaySession] = {}
@@ -361,6 +381,8 @@ class AgentGatewaySessionManager:
         tool_context = self.tool_context_factory(create_payload)
         if tool_context.session_id is None:
             tool_context.session_id = agent_session_id
+        if tool_context.run is not None and not create_payload.get("run_id"):
+            create_payload["run_id"] = str(tool_context.run.id)
         runtime = AgentSessionRuntime(
             context=context,
             model_client=self.model_client_factory(create_payload),
@@ -376,8 +398,8 @@ class AgentGatewaySessionManager:
             event_queue=event_queue,
             gateway_session_id=gateway_session_id,
             user_id=user_id,
-            run_id=run_id,
-            run_ledger=self._resolve_run_ledger() if run_id else None,
+            run_id=create_payload.get("run_id"),
+            run_ledger=self._resolve_run_ledger() if create_payload.get("run_id") else None,
         )
         self._sessions[agent_session_id] = session
         session.start()
@@ -528,12 +550,51 @@ class AgentGatewaySessionManager:
 
     def _default_tool_context(self, payload: dict[str, Any]) -> AgentToolContext:
         metadata = dict(payload.get("metadata") or {})
+        actor = str(payload.get("user_id") or "hal-agent")
         metadata.setdefault("secret_manager", create_secret_manager_from_settings(self.settings))
+        metadata.setdefault("settings", self.settings)
+        store = None
+        run = None
+        if self._session_factory is not None:
+            db_session = self._session_factory()
+            store = ResearchStore(db_session)
+            run = self._resolve_tool_context_run(store, payload, metadata, actor=actor)
         return AgentToolContext(
-            actor=str(payload.get("user_id") or "hal-agent"),
+            store=store,
+            run=run,
+            actor=actor,
             session_id=str(payload["session_id"]),
             metadata=metadata,
         )
+
+    def _resolve_tool_context_run(
+        self,
+        store: ResearchStore,
+        payload: dict[str, Any],
+        metadata: dict[str, Any],
+        *,
+        actor: str,
+    ):
+        run_id = _optional_str(payload.get("run_id") or metadata.get("run_id"))
+        if run_id:
+            run = store.get_run(run_id)
+            if run is None:
+                raise AgentGatewayError(f"Research run not found: {run_id}", "RUN_NOT_FOUND")
+            return run
+
+        project_slug = _optional_str(metadata.get("project_slug") or payload.get("project_slug"))
+        if not project_slug:
+            return None
+        project = store.get_project_by_slug(project_slug)
+        if project is None:
+            raise AgentGatewayError(
+                f"Research project not found: {project_slug}",
+                "PROJECT_NOT_FOUND",
+            )
+        objective = _optional_str(metadata.get("objective")) or f"Agent session {payload['session_id']}"
+        run = store.create_run(objective=objective, project=project, initiated_by=actor)
+        store.session.commit()
+        return run
 
     def _default_loop_config(self, _payload: dict[str, Any]) -> AgentLoopConfig:
         if not hasattr(self.settings, "agent"):

@@ -932,7 +932,9 @@ async function createSession() {
       run_id: value('runId') || undefined,
       metadata: {
         model_name: value('modelName') || undefined,
-        reasoning_effort: value('reasoningEffort') || undefined
+        reasoning_effort: value('reasoningEffort') || undefined,
+        project_slug: value('projectSlug') || undefined,
+        objective: value('messageText') || undefined
       }
     };
     const payload = await api('/api/agent/session', {method: 'POST', body: JSON.stringify(body)});
