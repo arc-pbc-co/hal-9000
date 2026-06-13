@@ -822,7 +822,7 @@ def frontend_html() -> str:
           <label>Project slug <input id="projectSlug" placeholder="firm-research"></label>
         </div>
         <div class="row">
-          <button onclick="createSession()">Create Session</button>
+          <button id="createSessionButton" onclick="createSession()">Create Session</button>
           <button class="secondary" onclick="refreshAgent()">Refresh</button>
           <button class="warn" onclick="compactSession()">Compact</button>
           <button class="danger" onclick="interruptSession()">Interrupt</button>
@@ -920,20 +920,37 @@ function showPanel(name) {
 function cap(text) { return text.charAt(0).toUpperCase() + text.slice(1); }
 async function createSession() {
   setStatus('Creating session...');
-  const body = {
-    agent_session_id: value('agentSessionId') || undefined,
-    user_id: value('userEmail') || undefined,
-    run_id: value('runId') || undefined,
-    metadata: {
-      model_name: value('modelName') || undefined,
-      reasoning_effort: value('reasoningEffort') || undefined
+  const button = $('createSessionButton');
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Creating...';
+  }
+  try {
+    const body = {
+      agent_session_id: value('agentSessionId') || undefined,
+      user_id: value('userEmail') || undefined,
+      run_id: value('runId') || undefined,
+      metadata: {
+        model_name: value('modelName') || undefined,
+        reasoning_effort: value('reasoningEffort') || undefined
+      }
+    };
+    const payload = await api('/api/agent/session', {method: 'POST', body: JSON.stringify(body)});
+    state.session = payload.agent_session;
+    $('agentSessionId').value = state.session.id;
+    applyEvents(payload.events || []);
+    setStatus(`Session ready · ${state.session.id.slice(0, 8)}`);
+    return payload;
+  } catch (error) {
+    setStatus(`Session error: ${error.message || error}`);
+    renderFeed();
+    throw error;
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Create Session';
     }
-  };
-  const payload = await api('/api/agent/session', {method: 'POST', body: JSON.stringify(body)});
-  state.session = payload.agent_session;
-  $('agentSessionId').value = state.session.id;
-  applyEvents(payload.events || []);
-  setStatus(`Session ${state.session.id}`);
+  }
 }
 async function submitMessage() {
   if (!value('agentSessionId')) await createSession();
@@ -996,7 +1013,14 @@ function renderApprovals() {
 function renderFeed() {
   const messages = state.history.map(m => `<div class="message ${esc(m.role)}"><div class="meta">${esc(m.role)}</div><pre>${esc(m.content || JSON.stringify(m))}</pre></div>`);
   const events = state.events.slice(-20).map(e => `<div class="event ${esc(e.type)}"><div class="meta">#${esc(e.sequence)} ${esc(e.type)}</div><pre>${esc(JSON.stringify(e.data || {}, null, 2))}</pre></div>`);
-  $('feed').innerHTML = messages.concat(events).join('') || '<div class="empty">Create a session to begin.</div>';
+  const session = state.session ? `<div class="message assistant"><div class="meta">session ready</div><pre>${esc(JSON.stringify({
+    id: state.session.id,
+    user_id: state.session.user_id,
+    run_id: state.session.run_id,
+    events: state.session.event_count,
+    pending_approvals: state.session.pending_approvals?.length || 0
+  }, null, 2))}</pre></div>` : '';
+  $('feed').innerHTML = [session].concat(messages, events).filter(Boolean).join('') || '<div class="empty">Create a session to begin.</div>';
 }
 async function loadReview(detailOnly = false) {
   const params = new URLSearchParams({reviewer: value('userEmail') || 'reviewer@example.com'});
@@ -1067,6 +1091,8 @@ function drawGraph(graph) {
     </g>`).join('');
   svg.innerHTML = lines + circles;
 }
+window.addEventListener('unhandledrejection', event => setStatus(`Error: ${event.reason?.message || event.reason}`));
+window.addEventListener('error', event => setStatus(`Error: ${event.message}`));
 boot().catch(error => setStatus(error.message));
 </script>
 </body>
