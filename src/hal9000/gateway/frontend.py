@@ -11,21 +11,31 @@ from hal9000.research.authz import ResearchAuthorizer
 from hal9000.research.graph import ResearchGraphService
 from hal9000.research.review import ResearchReviewService
 
+DEFAULT_AGENT_MODEL = "anthropic/claude-opus-4-8"
+COCKPIT_MODEL_CHOICES = [
+    # Anthropic: Fable is intentionally excluded for now; keep Opus as HAL's Claude default.
+    "anthropic/claude-opus-4-8",
+    "anthropic/claude-sonnet-4-6",
+    "anthropic/claude-haiku-4-5",
+    # OpenAI frontier text/agent models.
+    "openai/gpt-5.5",
+    "openai/gpt-5.4",
+    "openai/gpt-5.4-mini",
+    # Google Gemini API via LiteLLM's gemini/ provider route.
+    "gemini/gemini-3.5-flash",
+    "gemini/gemini-3.1-pro-preview",
+    "gemini/gemini-3.1-flash-lite",
+    # Useful non-frontier routes for HAL development and offline demos.
+    "huggingface/Qwen/Qwen3-235B-A22B-Instruct-2507",
+    "local/llama3.1:8b",
+]
+
 
 def frontend_config_payload(settings) -> dict[str, Any]:
     """Return the browser cockpit's model and route configuration."""
     agent = getattr(settings, "agent", None)
-    default_model = getattr(agent, "model_name", "anthropic/claude-sonnet-4-20250514")
-    models = _unique(
-        [
-            default_model,
-            "anthropic/claude-sonnet-4-20250514",
-            "openai/gpt-5.5",
-            "openai/gpt-5.4",
-            "huggingface/Qwen/Qwen3-235B-A22B-Instruct-2507",
-            "local/llama3.1:8b",
-        ]
-    )
+    default_model = getattr(agent, "model_name", DEFAULT_AGENT_MODEL)
+    models = _unique([default_model, *COCKPIT_MODEL_CHOICES])
     return {
         "service": "hal-cockpit",
         "default_model": default_model,
@@ -131,7 +141,10 @@ def frontend_html() -> str:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>HAL 9000 Cockpit</title>
+  <title>HAL-9000 Research Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600&family=Newsreader:opsz,wght@6..72,300..800&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; }
     :root {
@@ -430,15 +443,365 @@ def frontend_html() -> str:
       .composer { grid-template-columns: 1fr; }
       .tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
+
+    /* ARC brand graft: architect-paper surface, technical mono controls, restrained data accents. */
+    :root {
+      --arc-bg: #E8E6E1;
+      --arc-paper: #D5D3CE;
+      --arc-paper-soft: #eeece7;
+      --arc-text: #111111;
+      --arc-stone: #666666;
+      --arc-border: #C5C3BE;
+      --arc-violet: #5E5CE6;
+      --arc-violet-soft: #A5B4FC;
+      --arc-black: #050505;
+      --arc-black-soft: #101010;
+      --arc-cyan: #00D4FF;
+      --arc-green: #44FF88;
+      --arc-amber: #FFAA00;
+      --arc-red: #FF4444;
+      --bg: var(--arc-bg);
+      --panel: var(--arc-paper);
+      --panel-2: var(--arc-paper-soft);
+      --ink: var(--arc-text);
+      --muted: var(--arc-stone);
+      --line: var(--arc-border);
+      --red: var(--arc-red);
+      --amber: var(--arc-amber);
+      --blue: var(--arc-cyan);
+      --green: var(--arc-green);
+      --white: #ffffff;
+      --shadow: 0 24px 70px rgba(17, 17, 17, .16);
+    }
+    html { background: var(--arc-bg); }
+    body {
+      color: var(--arc-text);
+      background:
+        linear-gradient(to right, rgba(94,92,230,.08) 0 1px, transparent 1px 20px),
+        linear-gradient(to bottom, rgba(94,92,230,.08) 0 1px, transparent 1px 20px),
+        linear-gradient(to right, rgba(94,92,230,.12) 0 1px, transparent 1px 100px),
+        linear-gradient(to bottom, rgba(94,92,230,.12) 0 1px, transparent 1px 100px),
+        var(--arc-bg);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      position: relative;
+    }
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      opacity: .18;
+      mix-blend-mode: multiply;
+      pointer-events: none;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.35'/%3E%3C/svg%3E");
+    }
+    header {
+      min-height: 92px;
+      padding: 20px 28px;
+      color: #f5f5f5;
+      background:
+        linear-gradient(90deg, rgba(94,92,230,.18), transparent 34%),
+        linear-gradient(to right, rgba(255,255,255,.08) 0 1px, transparent 1px 60px),
+        linear-gradient(to bottom, rgba(255,255,255,.08) 0 1px, transparent 1px 60px),
+        var(--arc-black);
+      border-bottom: 1px solid rgba(94,92,230,.48);
+      box-shadow: 0 18px 55px rgba(0,0,0,.28);
+    }
+    h1 {
+      font-family: Newsreader, Georgia, serif;
+      font-size: 34px;
+      font-weight: 660;
+      line-height: 1;
+      color: #f7f7f7;
+    }
+    h2 {
+      font-family: Newsreader, Georgia, serif;
+      font-size: 24px;
+      font-weight: 620;
+      color: var(--arc-text);
+    }
+    h3 {
+      font-size: 14px;
+      font-weight: 650;
+      color: var(--arc-text);
+    }
+    main {
+      padding: 22px;
+      gap: 18px;
+      position: relative;
+      z-index: 1;
+    }
+    section {
+      padding: 16px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.38), rgba(255,255,255,.05)),
+        var(--arc-paper);
+      border-color: var(--arc-border);
+      box-shadow: var(--shadow);
+    }
+    section::before {
+      border-top-color: rgba(94,92,230,.64);
+      background:
+        linear-gradient(to right, rgba(94,92,230,.08) 0 1px, transparent 1px 20px),
+        linear-gradient(to bottom, rgba(94,92,230,.06) 0 1px, transparent 1px 20px);
+    }
+    label {
+      color: var(--arc-stone);
+      font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+    }
+    input, select, textarea, button {
+      border-radius: 4px;
+      border-color: var(--arc-border);
+    }
+    input, select, textarea {
+      color: var(--arc-text);
+      background: rgba(255,255,255,.42);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.22);
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--arc-violet);
+      box-shadow: 0 0 0 2px rgba(94,92,230,.18);
+    }
+    button {
+      background: var(--arc-violet);
+      color: #fff;
+      border-color: var(--arc-violet);
+      font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      transition: transform .16s ease, border-color .16s ease, background .16s ease, color .16s ease;
+    }
+    button:hover {
+      background: var(--arc-text);
+      color: #fff;
+      border-color: var(--arc-text);
+    }
+    button.secondary { background: var(--arc-text); border-color: var(--arc-text); color: #fff; }
+    button.ghost { background: transparent; color: var(--arc-text); border-color: rgba(17,17,17,.26); }
+    button.ghost:hover { background: var(--arc-text); color: #fff; }
+    button.danger { background: transparent; color: var(--arc-red); border-color: rgba(255,68,68,.52); }
+    button.danger:hover { background: var(--arc-red); color: #fff; border-color: var(--arc-red); }
+    button.warn { background: transparent; color: #7a5200; border-color: rgba(255,170,0,.58); }
+    button.warn:hover { background: var(--arc-amber); color: #111; border-color: var(--arc-amber); }
+    .mark {
+      width: 82px;
+      height: 52px;
+      border-color: rgba(255,255,255,.18);
+      background: rgba(255,255,255,.04);
+      border-radius: 4px;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.04), 0 12px 30px rgba(0,0,0,.32);
+    }
+    .mark span {
+      font-family: Newsreader, Georgia, serif;
+      font-size: 28px;
+      line-height: 1;
+      color: #fff;
+      font-weight: 760;
+    }
+    .mark img {
+      width: 54px;
+      height: 48px;
+      object-fit: contain;
+      display: block;
+      filter: drop-shadow(0 10px 24px rgba(255,255,255,.08));
+    }
+    .lens { display: none; }
+    .kicker {
+      color: var(--arc-violet-soft);
+      font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .status {
+      color: #f5f5f5;
+      font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 999px;
+      padding: 8px 12px;
+      background: rgba(0,0,0,.44);
+    }
+    .status::before {
+      width: 7px;
+      height: 7px;
+      background: var(--arc-green);
+      box-shadow: 0 0 16px rgba(68,255,136,.7);
+    }
+    .module-head {
+      margin-bottom: 4px;
+      position: relative;
+      z-index: 1;
+    }
+    .chip {
+      border-color: rgba(94,92,230,.42);
+      color: var(--arc-violet);
+      background: rgba(94,92,230,.08);
+      font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .tabs {
+      background: rgba(255,255,255,.36);
+      border-color: var(--arc-border);
+    }
+    .tabs button { color: var(--arc-stone); }
+    .tabs button.active {
+      background: var(--arc-text);
+      color: #fff;
+      border-color: var(--arc-text);
+      box-shadow: inset 0 2px 0 var(--arc-violet);
+    }
+    .feed {
+      background:
+        linear-gradient(to right, rgba(255,255,255,.07) 0 1px, transparent 1px 60px),
+        linear-gradient(to bottom, rgba(255,255,255,.06) 0 1px, transparent 1px 60px),
+        var(--arc-black);
+      color: #f5f5f5;
+      border-color: rgba(17,17,17,.38);
+    }
+    .message, .event, .item {
+      border-color: rgba(17,17,17,.16);
+      border-left-color: var(--arc-cyan);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.42), transparent),
+        var(--arc-paper-soft);
+      color: var(--arc-text);
+    }
+    .feed .message, .feed .event {
+      background: rgba(255,255,255,.05);
+      border-color: rgba(255,255,255,.12);
+      color: #f5f5f5;
+    }
+    .message.assistant { border-left-color: var(--arc-violet-soft); }
+    .event.turn_started { border-left-color: var(--arc-cyan); }
+    .meta {
+      color: var(--arc-stone);
+      font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+    }
+    .empty {
+      color: var(--arc-stone);
+      border-color: rgba(17,17,17,.24);
+      background: rgba(255,255,255,.24);
+    }
+    .item.selectable {
+      color: var(--arc-text);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.42), transparent),
+        var(--arc-paper-soft);
+    }
+    .metric {
+      border-color: rgba(17,17,17,.14);
+      background: rgba(255,255,255,.36);
+      color: var(--arc-stone);
+      font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+    }
+    .metric strong {
+      color: var(--arc-text);
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+    }
+    .graph-box {
+      border-color: rgba(17,17,17,.2);
+      background:
+        linear-gradient(to right, rgba(94,92,230,.1) 0 1px, transparent 1px 48px),
+        linear-gradient(to bottom, rgba(94,92,230,.08) 0 1px, transparent 1px 48px),
+        rgba(255,255,255,.32);
+    }
+    pre {
+      font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    ::selection { background: var(--arc-violet); color: #fff; }
+    @media (max-width: 980px) {
+      h1 { font-size: 30px; }
+    }
+
+    /* ARC style-guide refinement: Inter product UI, Newsreader only for the mark, Mono for data/code. */
+    :root {
+      --arc-black: #0A0A0A;
+      --arc-black-soft: #111111;
+      --arc-paper-soft: #E8E6E1;
+      --arc-green: #22C55E;
+    }
+    body {
+      background:
+        linear-gradient(to right, rgba(94,92,230,.08) 0 1px, transparent 1px 20px),
+        linear-gradient(to bottom, rgba(94,92,230,.08) 0 1px, transparent 1px 20px),
+        linear-gradient(to right, rgba(94,92,230,.10) 0 1px, transparent 1px 100px),
+        linear-gradient(to bottom, rgba(94,92,230,.10) 0 1px, transparent 1px 100px),
+        var(--arc-bg);
+    }
+    header {
+      background:
+        linear-gradient(90deg, rgba(94,92,230,.18), transparent 34%),
+        linear-gradient(to right, rgba(255,255,255,.08) 0 1px, transparent 1px 60px),
+        linear-gradient(to bottom, rgba(255,255,255,.08) 0 1px, transparent 1px 60px),
+        var(--arc-black);
+    }
+    h1 {
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      font-size: 32px;
+      font-weight: 600;
+      line-height: 1.02;
+    }
+    h2 {
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--arc-text);
+    }
+    h3,
+    .tile h3 {
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      font-weight: 600;
+    }
+    .kicker,
+    label,
+    button,
+    .chip {
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      font-weight: 600;
+      letter-spacing: 0;
+    }
+    .status,
+    .meta,
+    .metric,
+    .metric strong,
+    pre {
+      font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-variant-numeric: tabular-nums;
+    }
+    .mark span {
+      font-family: Newsreader, Georgia, serif;
+      font-weight: 400;
+    }
+    .feed {
+      background:
+        linear-gradient(to right, rgba(255,255,255,.07) 0 1px, transparent 1px 60px),
+        linear-gradient(to bottom, rgba(255,255,255,.06) 0 1px, transparent 1px 60px),
+        var(--arc-black);
+    }
+    @media (max-width: 980px) {
+      h1 { font-size: 30px; }
+      h2 { font-size: 22px; }
+    }
   </style>
 </head>
 <body>
   <header>
     <div class="brand">
-      <div class="mark" aria-hidden="true"><div class="lens"></div></div>
+      <div class="mark" aria-hidden="true"><img src="/assets/arc-logo-metal.png" alt=""></div>
       <div>
-        <div class="kicker">Research OS</div>
-        <h1>HAL 9000 Cockpit</h1>
+        <div class="kicker">Autonomous Resource Corporation</div>
+        <h1>HAL-9000 Research Console</h1>
       </div>
     </div>
     <div id="status" class="status">Ready</div>
@@ -694,13 +1057,13 @@ function drawGraph(graph) {
   const lines = edges.map(edge => {
     const a = positions.get(edge.source_key), b = positions.get(edge.target_key);
     if (!a || !b) return '';
-    return `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="#53606a" stroke-width="1.5"><title>${esc(edge.relationship_type)}</title></line>`;
+    return `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="#5E5CE6" stroke-opacity="0.46" stroke-width="1.5"><title>${esc(edge.relationship_type)}</title></line>`;
   }).join('');
   const circles = [...positions.values()].map(p => `
     <g>
-      <circle cx="${p.x}" cy="${p.y}" r="20" fill="#0b0d0f" stroke="#cf2029" stroke-width="3"></circle>
-      <circle cx="${p.x}" cy="${p.y}" r="6" fill="#e5a93c"></circle>
-      <text x="${p.x}" y="${p.y + 38}" text-anchor="middle" font-size="11" fill="#f4f1e8">${esc(String(p.node.label || p.node.entity_type).slice(0, 18))}</text>
+      <circle cx="${p.x}" cy="${p.y}" r="20" fill="#050505" stroke="#5E5CE6" stroke-width="3"></circle>
+      <circle cx="${p.x}" cy="${p.y}" r="6" fill="#00D4FF"></circle>
+      <text x="${p.x}" y="${p.y + 38}" text-anchor="middle" font-size="11" fill="#111111">${esc(String(p.node.label || p.node.entity_type).slice(0, 18))}</text>
     </g>`).join('');
   svg.innerHTML = lines + circles;
 }

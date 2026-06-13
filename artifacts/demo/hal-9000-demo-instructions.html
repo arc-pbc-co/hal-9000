@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HAL-9000 Demo Instructions | ARC</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;1,6..72,400&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --black: #0A0A0A;
+      --soft-black: #111111;
+      --cream: #E8E6E1;
+      --white: #FFFFFF;
+      --violet: #5E5CE6;
+      --cyan: #00D4FF;
+      --green: #22C55E;
+      --muted: #9CA3AF;
+      --border: rgba(107,114,128,.36);
+    }
+    * { box-sizing: border-box; }
+    html {
+      min-height: 100%;
+      color: var(--white);
+      background:
+        linear-gradient(to right, rgba(94,92,230,.08) 0 1px, transparent 1px 72px),
+        linear-gradient(to bottom, rgba(94,92,230,.06) 0 1px, transparent 1px 72px),
+        var(--black);
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 82% 12%, rgba(94,92,230,.18), transparent 22rem),
+        radial-gradient(circle at 12% 80%, rgba(0,212,255,.08), transparent 20rem);
+    }
+    header, main, footer {
+      width: min(1120px, calc(100% - 40px));
+      margin: 0 auto;
+    }
+    header {
+      min-height: 270px;
+      display: grid;
+      align-content: center;
+      padding: 42px 0 28px;
+      border-bottom: 1px solid var(--border);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      margin-bottom: 30px;
+    }
+    .brand img {
+      width: 58px;
+      height: 52px;
+      object-fit: contain;
+      filter: drop-shadow(0 18px 30px rgba(255,255,255,.08));
+    }
+    .label, .eyebrow, .step-number, .status {
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: var(--cyan);
+    }
+    h1 {
+      margin: 0;
+      max-width: 820px;
+      font-family: Newsreader, Georgia, serif;
+      font-size: 76px;
+      line-height: .92;
+      font-weight: 400;
+    }
+    .intro {
+      max-width: 760px;
+      margin-top: 22px;
+      color: rgba(255,255,255,.76);
+      font-size: 20px;
+      line-height: 1.5;
+    }
+    main {
+      display: grid;
+      gap: 18px;
+      padding: 28px 0 56px;
+      min-width: 0;
+    }
+    section {
+      border: 1px solid var(--border);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.035), transparent 35%),
+        var(--soft-black);
+      border-radius: 8px;
+      padding: 24px;
+      min-width: 0;
+    }
+    h2 {
+      margin: 0 0 12px;
+      font-size: 30px;
+      line-height: 1.15;
+      font-weight: 600;
+    }
+    h3 {
+      margin: 22px 0 10px;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    p, li {
+      color: rgba(255,255,255,.74);
+      font-size: 16px;
+      line-height: 1.55;
+    }
+    ul, ol { margin: 0; padding-left: 22px; }
+    li + li { margin-top: 8px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      background: rgba(255,255,255,.035);
+    }
+    .card strong {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--white);
+      font-size: 16px;
+    }
+    pre {
+      margin: 12px 0 0;
+      padding: 16px;
+      width: 100%;
+      max-width: 100%;
+      overflow-x: auto;
+      border: 1px solid rgba(107,114,128,.34);
+      border-radius: 8px;
+      background: #050505;
+      color: #E8E6E1;
+      font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    code {
+      font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: var(--white);
+    }
+    a { color: var(--cyan); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--white);
+      border: 1px solid rgba(255,255,255,.16);
+      border-radius: 999px;
+      padding: 8px 12px;
+      background: rgba(255,255,255,.035);
+    }
+    .status::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 18px rgba(34,197,94,.76);
+    }
+    footer {
+      color: var(--muted);
+      padding: 0 0 40px;
+      font-size: 13px;
+    }
+    @media (max-width: 820px) {
+      header, main, footer { width: min(100% - 28px, 1120px); }
+      h1 { font-size: 48px; }
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <img src="../assets/arc-logo-metal.png" alt="ARC">
+      <div>
+        <div class="label">Autonomous Resource Corporation</div>
+        <div class="status">Demo-ready path</div>
+      </div>
+    </div>
+    <h1>Run the HAL-9000 research demo.</h1>
+    <p class="intro">This runbook gives any ARC teammate a repeatable path for presenting HAL-9000: start from seeded data for reliability, then optionally run a live custom research topic when network/API conditions are safe.</p>
+  </header>
+
+  <main>
+    <section>
+      <div class="eyebrow">What The Demo Proves</div>
+      <h2>One research ledger, multiple surfaces.</h2>
+      <div class="grid">
+        <div class="card">
+          <strong>Shared memory</strong>
+          <p>HAL stores documents, chunks, claims, outputs, graph edges, and review decisions in one durable research ledger.</p>
+        </div>
+        <div class="card">
+          <strong>Agent control</strong>
+          <p>Sessions can stream events, request approvals, compact context, replay history, and route tools through HAL policy.</p>
+        </div>
+        <div class="card">
+          <strong>Reviewable output</strong>
+          <p>Briefs, evidence tables, graph context, ADAM exports, and audit manifests stay source-backed and inspectable.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="eyebrow">1. Prepare The Workspace</div>
+      <h2>Use a clean local database.</h2>
+      <p>This keeps rehearsals isolated from any existing local HAL data. Run from the HAL repo root.</p>
+      <pre><code>cd /path/to/hal-9000
+
+export HAL9000_DEMO_ROOT="${PWD}/.hal9000_demo"
+mkdir -p "$HAL9000_DEMO_ROOT"
+
+export HAL9000_DATABASE__URL="sqlite:///${HAL9000_DEMO_ROOT}/hal-demo.db"
+export HAL9000_STORAGE__ROOT_PATH="${HAL9000_DEMO_ROOT}/objects"
+export HAL9000_ACQUISITION__UNPAYWALL_EMAIL="demo@arc-pbc.com"
+
+python3 -m alembic upgrade head</code></pre>
+    </section>
+
+    <section>
+      <div class="eyebrow">2. Seed The Reliable Demo</div>
+      <h2>Create a project with reviewable data.</h2>
+      <p>This path does not depend on live paper downloads or model/provider availability, so it is the recommended meeting-room demo.</p>
+      <pre><code>python3 -m hal9000.cli research demo-seed \
+  --project-slug hal-demo \
+  --project-name "HAL-9000 Demo" \
+  --owner demo@arc-pbc.com \
+  --reviewer demo@arc-pbc.com \
+  --contributor demo@arc-pbc.com</code></pre>
+    </section>
+
+    <section>
+      <div class="eyebrow">3. Start The Presentation Surfaces</div>
+      <h2>Run the cockpit and deck locally.</h2>
+      <p>Use two terminals. Keep both running during the demo.</p>
+      <h3>Terminal A: HAL app gateway</h3>
+      <pre><code>python3 -m hal9000.cli gateway http --host 127.0.0.1 --port 9101</code></pre>
+      <h3>Terminal B: static artifact server</h3>
+      <pre><code>python3 -m http.server 9102 --bind 127.0.0.1 --directory "$PWD"</code></pre>
+      <h3>Open these URLs</h3>
+      <pre><code>http://127.0.0.1:9102/artifacts/presentations/hal-9000-general-demo.html
+http://127.0.0.1:9101/ui</code></pre>
+    </section>
+
+    <section>
+      <div class="eyebrow">4. Presenter Flow</div>
+      <h2>Show the loop, not just the chat.</h2>
+      <ol>
+        <li>Open the deck and frame HAL as ARC's research operating system: source-backed memory, governed agent runtime, reviewable outputs.</li>
+        <li>Open the cockpit. Set <code>User email</code> to <code>demo@arc-pbc.com</code> and <code>Project slug</code> to <code>hal-demo</code>.</li>
+        <li>Click <code>Create Session</code>, then show the chat/event feed and model picker.</li>
+        <li>Open <code>Review</code>, click <code>Load Review</code>, select a run, and show the staged outputs.</li>
+        <li>Open <code>Evidence</code> with the selected run id and show claims/chunks/output counts.</li>
+        <li>Open <code>Graph</code> and show the relationship view: documents, claims, outputs, and review context.</li>
+      </ol>
+    </section>
+
+    <section>
+      <div class="eyebrow">5. Optional Custom Topic</div>
+      <h2>Run a live research topic when conditions allow.</h2>
+      <p>Use this only when internet access and acquisition dependencies are available. For customer meetings, run this before the call and present the resulting run.</p>
+      <pre><code>python3 -m hal9000.cli research init-program \
+  research/programs/custom-demo-topic.md \
+  --name "Custom HAL Demo Research Program" \
+  --objective "Research a focused technical topic selected for this audience, preserving source-backed claims, evidence tables, open questions, and ADAM-ready context." \
+  --owner demo@arc-pbc.com \
+  --domain materials_science
+
+python3 -m hal9000.cli research save-program \
+  research/programs/custom-demo-topic.md \
+  --project-slug hal-demo
+
+python3 -m hal9000.cli research queue-run \
+  --project-slug hal-demo \
+  --program-id &lt;PROGRAM_ID&gt; \
+  --initiated-by demo@arc-pbc.com
+
+python3 -m hal9000.cli research execute-run &lt;RUN_ID&gt; \
+  --actor demo-worker \
+  --live-acquisition \
+  --max-attempts 2 \
+  --phase-timeout-seconds 300</code></pre>
+    </section>
+
+    <section>
+      <div class="eyebrow">Useful Proof Commands</div>
+      <h2>Keep these ready in a terminal.</h2>
+      <pre><code>python3 -m hal9000.cli research review-queue \
+  --reviewer demo@arc-pbc.com \
+  --project-slug hal-demo
+
+python3 -m hal9000.cli research search-memory \
+  "source-backed evidence and open questions" \
+  --project-slug hal-demo \
+  --target claims \
+  --target outputs \
+  --graph-boost \
+  --json
+
+python3 -m hal9000.cli research graph-project hal-demo --mermaid
+
+python3 -m hal9000.cli research export-run &lt;RUN_ID&gt; \
+  --target adam \
+  --target markdown \
+  --target json \
+  --status all \
+  --as-user demo@arc-pbc.com \
+  --json</code></pre>
+    </section>
+
+    <section>
+      <div class="eyebrow">Troubleshooting</div>
+      <h2>Fast fixes during rehearsal.</h2>
+      <ul>
+        <li><strong>Old styling:</strong> hard refresh the browser tab.</li>
+        <li><strong>Port already in use:</strong> use another port, such as <code>9104</code>, and update the URL.</li>
+        <li><strong>Empty review queue:</strong> re-run <code>demo-seed</code> with the same <code>hal-demo</code> project slug.</li>
+        <li><strong>Live acquisition fails:</strong> continue with seeded data; live acquisition is optional for the demo.</li>
+        <li><strong>Reset everything:</strong> stop servers and remove <code>.hal9000_demo</code>, then rerun the setup.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    HAL-9000 demo kit for ARC internal presenters. Use seeded data for reliability; use live research only after rehearsal.
+  </footer>
+</body>
+</html>

@@ -17,6 +17,7 @@ SleepFunc = Callable[[float], Awaitable[Any]]
 
 _ANTHROPIC_EFFORTS = {"low", "medium", "high", "xhigh", "max"}
 _OPENAI_EFFORTS = {"minimal", "low", "medium", "high", "xhigh"}
+_GEMINI_EFFORTS = {"minimal", "low", "medium", "high"}
 _HF_EFFORTS = {"low", "medium", "high"}
 _LOCAL_PROVIDER_DEFAULTS = {
     "ollama": ("OLLAMA_BASE_URL", "OLLAMA_API_KEY", "http://localhost:11434"),
@@ -37,7 +38,7 @@ class UnsupportedReasoningEffortError(ValueError):
 class LiteLLMModelConfig:
     """Configuration for one HAL LiteLLM model client."""
 
-    model_name: str = "anthropic/claude-sonnet-4-20250514"
+    model_name: str = "anthropic/claude-opus-4-8"
     reasoning_effort: str | None = None
     max_tokens: int = 4096
     timeout_seconds: float = 600.0
@@ -161,6 +162,20 @@ def resolve_litellm_params(
             if effort not in _OPENAI_EFFORTS:
                 raise UnsupportedReasoningEffortError(
                     f"OpenAI does not accept reasoning_effort={effort!r}"
+                )
+            params["reasoning_effort"] = effort
+        return params
+
+    if model_name.startswith("gemini/"):
+        params = {"model": model_name}
+        api_key = secret_value("gemini", secret_manager=secret_manager)
+        if api_key:
+            params["api_key"] = api_key
+        effort = _normalize_effort(reasoning_effort)
+        if effort:
+            if effort not in _GEMINI_EFFORTS:
+                raise UnsupportedReasoningEffortError(
+                    f"Gemini does not accept reasoning_effort={effort!r}"
                 )
             params["reasoning_effort"] = effort
         return params

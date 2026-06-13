@@ -51,6 +51,7 @@ def test_secret_manager_resolves_provider_candidates(monkeypatch):
     assert secret.value == "hf-managed"
     assert secret.to_dict()["value"] == REDACTION
     assert "HF_TOKEN" in provider_secret_names("huggingface")
+    assert "GEMINI_API_KEY" in provider_secret_names("gemini")
 
 
 def test_chained_secret_manager_prefers_first_source(monkeypatch):

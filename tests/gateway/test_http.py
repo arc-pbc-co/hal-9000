@@ -347,11 +347,23 @@ def test_gateway_http_frontend_serves_cockpit_and_hal_panels(temp_directory: Pat
                 "/api/frontend/graph",
                 params={"viewer": "reviewer@example.com", "run_id": run_id},
             )
+            logo = client.get("/assets/arc-logo-metal.png")
 
         assert ui.status_code == 200
-        assert "HAL 9000 Cockpit" in ui.text
+        assert "HAL-9000 Research Console" in ui.text
         assert "/api/agent/session" in ui.text
-        assert config.json()["default_model"]
+        assert logo.status_code == 200
+        assert logo.headers["content-type"] == "image/png"
+        assert logo.content.startswith(b"\x89PNG")
+        frontend_config = config.json()
+        assert frontend_config["default_model"] == "anthropic/claude-opus-4-8"
+        assert "anthropic/claude-opus-4-8" in frontend_config["models"]
+        assert "anthropic/claude-sonnet-4-6" in frontend_config["models"]
+        assert "openai/gpt-5.5" in frontend_config["models"]
+        assert "openai/gpt-5.4-mini" in frontend_config["models"]
+        assert "gemini/gemini-3.5-flash" in frontend_config["models"]
+        assert "gemini/gemini-3.1-pro-preview" in frontend_config["models"]
+        assert not any("fable" in model for model in frontend_config["models"])
         assert review.json()["queue"][0]["run_id"] == run_id
         assert evidence.json()["outputs"][0]["title"] == "HTTP Slack Brief"
         assert graph.json()["summary"]["edge_count"] == 1

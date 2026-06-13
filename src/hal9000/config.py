@@ -227,7 +227,7 @@ class AgentConfig(BaseSettings):
     """Agent runtime and model-provider configuration."""
 
     model_name: str = Field(
-        default="anthropic/claude-sonnet-4-20250514",
+        default="anthropic/claude-opus-4-8",
         description="Default LiteLLM-compatible model id for HAL agent sessions",
     )
     reasoning_effort: Optional[str] = Field(

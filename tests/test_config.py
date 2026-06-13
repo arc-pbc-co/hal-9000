@@ -323,7 +323,7 @@ class TestAgentConfig:
         """Test default values."""
         config = AgentConfig()
 
-        assert config.model_name == "anthropic/claude-sonnet-4-20250514"
+        assert config.model_name == "anthropic/claude-opus-4-8"
         assert config.reasoning_effort is None
         assert config.max_tokens == 4096
         assert config.timeout_seconds == 600.0

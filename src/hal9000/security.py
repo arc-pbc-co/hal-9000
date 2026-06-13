@@ -27,6 +27,8 @@ SECRET_KEY_MARKERS = (
 PROVIDER_SECRET_CANDIDATES: dict[str, tuple[str, ...]] = {
     "anthropic": ("HAL9000_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"),
     "openai": ("HAL9000_OPENAI_API_KEY", "OPENAI_API_KEY"),
+    "gemini": ("HAL9000_GEMINI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"),
+    "google": ("HAL9000_GEMINI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"),
     "huggingface": ("INFERENCE_TOKEN", "HF_TOKEN", "HUGGING_FACE_HUB_TOKEN"),
     "github": ("GITHUB_TOKEN",),
     "semantic_scholar": (

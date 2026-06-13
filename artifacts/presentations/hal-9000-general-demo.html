@@ -1,0 +1,1968 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HAL-9000 Capabilities | ARC Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;1,6..72,400&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      letter-spacing: 0;
+    }
+
+    :root {
+      --black: #050607;
+      --black-2: #0a0c0e;
+      --charcoal: #11161a;
+      --panel: #151d22;
+      --panel-2: #1c262d;
+      --line: #31404a;
+      --line-hot: #7b2026;
+      --red: #d7272f;
+      --red-dark: #761318;
+      --amber: #e4a83b;
+      --blue: #6bb3ce;
+      --green: #6ab77b;
+      --cream: #f5f0e4;
+      --muted: #a4adb4;
+      --soft: rgba(245, 240, 228, 0.72);
+      --shadow: 0 28px 90px rgba(0, 0, 0, 0.5);
+      --radius: 8px;
+    }
+
+    html {
+      min-height: 100%;
+      background: var(--black);
+      color: var(--cream);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      background:
+        radial-gradient(circle at 78% 18%, rgba(215, 39, 47, 0.22), transparent 18rem),
+        radial-gradient(circle at 11% 72%, rgba(107, 179, 206, 0.12), transparent 21rem),
+        repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.028) 0 1px, transparent 1px 96px),
+        repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 96px),
+        linear-gradient(180deg, #111315 0%, #050607 48%, #0d1012 100%);
+      overflow: hidden;
+    }
+
+    button {
+      font: inherit;
+      color: var(--cream);
+      border: 1px solid rgba(245, 240, 228, 0.16);
+      border-radius: 6px;
+      background: linear-gradient(180deg, #303a42, #171e23);
+      min-height: 40px;
+      padding: 0 14px;
+      cursor: pointer;
+      font-weight: 760;
+    }
+
+    button:hover,
+    button:focus-visible {
+      border-color: rgba(245, 240, 228, 0.34);
+      outline: none;
+      transform: translateY(-1px);
+    }
+
+    button.primary {
+      background: linear-gradient(180deg, #df3840, #8e171d);
+    }
+
+    button.ghost {
+      background: rgba(5, 6, 7, 0.56);
+    }
+
+    .shell {
+      height: 100vh;
+      display: grid;
+      grid-template-rows: 82px minmax(0, 1fr) 62px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 14px 24px;
+      border-bottom: 1px solid var(--line-hot);
+      background:
+        linear-gradient(90deg, rgba(215, 39, 47, 0.24), transparent 36%),
+        linear-gradient(180deg, rgba(28, 31, 33, 0.98), rgba(6, 7, 8, 0.98));
+      box-shadow: 0 18px 52px rgba(0, 0, 0, 0.46);
+      z-index: 5;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      min-width: 0;
+      gap: 15px;
+    }
+
+    .lens {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      border: 1px solid rgba(245, 240, 228, 0.24);
+      background:
+        radial-gradient(circle at 50% 50%, #fff7d8 0 5%, #ee7b4c 6% 13%, #d7272f 14% 32%, #6b1015 34% 50%, #12070a 53% 68%, #030303 70% 100%);
+      box-shadow:
+        inset 0 0 19px rgba(255, 244, 202, 0.35),
+        0 0 34px rgba(215, 39, 47, 0.64),
+        0 0 82px rgba(215, 39, 47, 0.25);
+      position: relative;
+      flex: 0 0 auto;
+    }
+
+    .lens::after {
+      content: "";
+      position: absolute;
+      inset: 13px 15px auto auto;
+      width: 12px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.78);
+      filter: blur(0.4px);
+    }
+
+    .kicker {
+      margin: 0 0 4px;
+      color: var(--amber);
+      font-size: 0.74rem;
+      font-weight: 850;
+      text-transform: uppercase;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      font-size: 1.86rem;
+      line-height: 1.03;
+      font-weight: 850;
+    }
+
+    .subhead {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-top: 4px;
+    }
+
+    .status-strip {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .status-pill {
+      min-height: 28px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 10px;
+      border: 1px solid rgba(245, 240, 228, 0.16);
+      border-radius: 999px;
+      color: var(--soft);
+      background: rgba(5, 6, 7, 0.48);
+      font-size: 0.74rem;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+
+    .status-light {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 18px rgba(106, 183, 123, 0.72);
+    }
+
+    .stage {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 282px minmax(0, 1fr);
+    }
+
+    .rail {
+      min-height: 0;
+      padding: 18px 16px;
+      border-right: 1px solid rgba(245, 240, 228, 0.11);
+      background:
+        linear-gradient(180deg, rgba(245, 240, 228, 0.03), transparent 38%),
+        rgba(7, 9, 10, 0.74);
+      overflow: auto;
+    }
+
+    .rail h2 {
+      color: var(--cream);
+      font-size: 0.84rem;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+    }
+
+    .slide-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .slide-tab {
+      width: 100%;
+      min-height: 50px;
+      display: grid;
+      grid-template-columns: 30px minmax(0, 1fr);
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      color: var(--muted);
+      background: rgba(17, 22, 26, 0.66);
+      border: 1px solid rgba(245, 240, 228, 0.09);
+      border-radius: var(--radius);
+      text-align: left;
+      box-shadow: none;
+    }
+
+    .slide-tab:hover,
+    .slide-tab:focus-visible {
+      color: var(--cream);
+      border-color: rgba(215, 39, 47, 0.45);
+      transform: none;
+    }
+
+    .slide-tab.active {
+      color: var(--cream);
+      background:
+        linear-gradient(90deg, rgba(215, 39, 47, 0.22), transparent),
+        rgba(21, 29, 34, 0.92);
+      border-color: rgba(215, 39, 47, 0.72);
+    }
+
+    .tab-index {
+      width: 28px;
+      height: 28px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      background: #080b0d;
+      border: 1px solid rgba(245, 240, 228, 0.14);
+      color: var(--amber);
+      font-size: 0.75rem;
+      font-weight: 850;
+    }
+
+    .tab-label {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      font-size: 0.84rem;
+      line-height: 1.15;
+      font-weight: 760;
+    }
+
+    .rail-panel {
+      margin-top: 16px;
+      border: 1px solid rgba(245, 240, 228, 0.1);
+      border-radius: var(--radius);
+      padding: 13px;
+      background: rgba(17, 22, 26, 0.74);
+    }
+
+    .rail-panel p {
+      color: var(--muted);
+      font-size: 0.83rem;
+      line-height: 1.48;
+    }
+
+    .deck {
+      min-height: 0;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      align-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateX(18px);
+      transition: opacity 220ms ease, transform 220ms ease;
+      padding: 34px;
+      overflow: auto;
+    }
+
+    .slide.active {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateX(0);
+    }
+
+    .slide-shell {
+      min-height: min(690px, 100%);
+      display: grid;
+      gap: 24px;
+      align-content: center;
+      max-width: 1180px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    .hero-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.04fr) minmax(340px, 0.96fr);
+      gap: 30px;
+      align-items: center;
+    }
+
+    .hero-title {
+      font-size: 4.1rem;
+      line-height: 0.96;
+      font-weight: 890;
+      max-width: 780px;
+    }
+
+    .hero-copy {
+      color: var(--soft);
+      font-size: 1.16rem;
+      line-height: 1.55;
+      max-width: 690px;
+      margin-top: 22px;
+    }
+
+    .hero-lockup {
+      position: relative;
+      min-height: 470px;
+      border: 1px solid rgba(245, 240, 228, 0.12);
+      border-radius: var(--radius);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.045), transparent 35%),
+        linear-gradient(135deg, rgba(215, 39, 47, 0.12), transparent 36%),
+        #0b0d0f;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .hero-lockup::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 24px),
+        repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 24px);
+      opacity: 0.44;
+    }
+
+    .hero-lens {
+      position: absolute;
+      width: 236px;
+      height: 236px;
+      left: calc(50% - 118px);
+      top: 52px;
+      border-radius: 50%;
+      border: 1px solid rgba(245, 240, 228, 0.24);
+      background:
+        radial-gradient(circle at 50% 50%, #fff6ce 0 5%, #ed9a53 6% 13%, #d7272f 14% 34%, #761318 35% 53%, #15090b 56% 72%, #020203 74% 100%);
+      box-shadow:
+        inset 0 0 48px rgba(255, 230, 177, 0.28),
+        0 0 86px rgba(215, 39, 47, 0.58),
+        0 0 170px rgba(215, 39, 47, 0.2);
+      z-index: 1;
+    }
+
+    .hero-lens::after {
+      content: "";
+      position: absolute;
+      top: 54px;
+      right: 64px;
+      width: 44px;
+      height: 28px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.7);
+      filter: blur(1px);
+    }
+
+    .monolith {
+      position: absolute;
+      left: 34px;
+      right: 34px;
+      bottom: 30px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      z-index: 2;
+    }
+
+    .mono-panel {
+      min-height: 112px;
+      padding: 13px;
+      border: 1px solid rgba(245, 240, 228, 0.13);
+      border-radius: var(--radius);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent),
+        rgba(17, 22, 26, 0.88);
+    }
+
+    .mono-panel strong {
+      display: block;
+      color: var(--amber);
+      font-size: 0.76rem;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+    }
+
+    .mono-panel span {
+      display: block;
+      color: var(--soft);
+      font-size: 0.82rem;
+      line-height: 1.36;
+    }
+
+    .headline {
+      display: grid;
+      gap: 13px;
+      max-width: 930px;
+    }
+
+    .headline h2 {
+      color: var(--cream);
+      font-size: 2.7rem;
+      line-height: 1.02;
+      font-weight: 860;
+    }
+
+    .headline p {
+      color: var(--soft);
+      font-size: 1.08rem;
+      line-height: 1.52;
+      max-width: 820px;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 18px;
+    }
+
+    .three-col {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .matrix {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .tile {
+      min-height: 158px;
+      border: 1px solid rgba(245, 240, 228, 0.12);
+      border-radius: var(--radius);
+      padding: 16px;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.045), transparent 38%),
+        rgba(17, 22, 26, 0.86);
+      box-shadow: 0 14px 42px rgba(0, 0, 0, 0.28);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .tile::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-top: 2px solid rgba(215, 39, 47, 0.58);
+      pointer-events: none;
+    }
+
+    .tile h3 {
+      color: var(--cream);
+      font-size: 1rem;
+      margin-bottom: 10px;
+      font-weight: 820;
+    }
+
+    .tile p,
+    .tile li {
+      color: var(--muted);
+      font-size: 0.93rem;
+      line-height: 1.44;
+    }
+
+    .tile ul {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    .tile.metric {
+      min-height: 130px;
+      display: grid;
+      align-content: space-between;
+    }
+
+    .metric-number {
+      color: var(--amber);
+      font-size: 2.1rem;
+      line-height: 1;
+      font-weight: 880;
+    }
+
+    .metric-label {
+      color: var(--muted);
+      font-size: 0.84rem;
+      line-height: 1.35;
+      margin-top: 8px;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 10px;
+      align-items: stretch;
+    }
+
+    .flow-step {
+      min-height: 138px;
+      border: 1px solid rgba(245, 240, 228, 0.12);
+      border-radius: var(--radius);
+      background: rgba(17, 22, 26, 0.84);
+      padding: 14px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .flow-step::after {
+      content: "";
+      position: absolute;
+      right: -16px;
+      top: 50%;
+      width: 32px;
+      height: 1px;
+      background: rgba(228, 168, 59, 0.62);
+    }
+
+    .flow-step:last-child::after {
+      display: none;
+    }
+
+    .flow-index {
+      color: var(--amber);
+      font-size: 0.76rem;
+      font-weight: 850;
+      margin-bottom: 8px;
+    }
+
+    .flow-step h3 {
+      font-size: 0.97rem;
+      line-height: 1.18;
+      margin-bottom: 8px;
+    }
+
+    .flow-step p {
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.36;
+    }
+
+    .diagram {
+      min-height: 520px;
+      border: 1px solid rgba(245, 240, 228, 0.12);
+      border-radius: var(--radius);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 35%),
+        rgba(7, 9, 10, 0.74);
+      position: relative;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+
+    #graphCanvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .diagram-label {
+      position: absolute;
+      z-index: 2;
+      left: 18px;
+      top: 16px;
+      display: grid;
+      gap: 5px;
+      max-width: 360px;
+    }
+
+    .diagram-label strong {
+      color: var(--cream);
+      font-size: 1rem;
+    }
+
+    .diagram-label span {
+      color: var(--muted);
+      font-size: 0.84rem;
+      line-height: 1.36;
+    }
+
+    .architecture {
+      display: grid;
+      gap: 10px;
+    }
+
+    .layer {
+      display: grid;
+      grid-template-columns: 210px minmax(0, 1fr);
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .layer-name {
+      min-height: 66px;
+      display: flex;
+      align-items: center;
+      color: var(--amber);
+      font-weight: 850;
+      border: 1px solid rgba(245, 240, 228, 0.12);
+      border-radius: var(--radius);
+      background: rgba(5, 6, 7, 0.62);
+      padding: 0 14px;
+    }
+
+    .layer-body {
+      min-height: 66px;
+      display: flex;
+      align-items: center;
+      color: var(--soft);
+      border: 1px solid rgba(245, 240, 228, 0.12);
+      border-radius: var(--radius);
+      background: rgba(17, 22, 26, 0.82);
+      padding: 13px 16px;
+      line-height: 1.42;
+    }
+
+    .demo-path {
+      display: grid;
+      grid-template-columns: 1.04fr 0.96fr;
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .terminal {
+      border: 1px solid rgba(245, 240, 228, 0.14);
+      border-radius: var(--radius);
+      background: #050607;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .terminal-top {
+      min-height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 13px;
+      border-bottom: 1px solid rgba(245, 240, 228, 0.12);
+      background: linear-gradient(180deg, #1b2228, #11161a);
+      color: var(--muted);
+      font-size: 0.8rem;
+      font-weight: 760;
+    }
+
+    .terminal-code {
+      margin: 0;
+      padding: 16px;
+      color: #d9f2df;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 0.88rem;
+      line-height: 1.52;
+      white-space: pre-wrap;
+    }
+
+    .terminal-code .prompt {
+      color: var(--amber);
+    }
+
+    .terminal-code .note {
+      color: var(--blue);
+    }
+
+    .evidence-stack {
+      display: grid;
+      gap: 10px;
+    }
+
+    .evidence-row {
+      min-height: 72px;
+      display: grid;
+      grid-template-columns: 112px minmax(0, 1fr);
+      gap: 12px;
+      align-items: center;
+      border: 1px solid rgba(245, 240, 228, 0.11);
+      border-radius: var(--radius);
+      background: rgba(17, 22, 26, 0.82);
+      padding: 12px;
+    }
+
+    .evidence-tag {
+      color: var(--amber);
+      font-weight: 850;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+    }
+
+    .evidence-row p {
+      color: var(--muted);
+      font-size: 0.88rem;
+      line-height: 1.38;
+    }
+
+    .footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 20px;
+      border-top: 1px solid rgba(245, 240, 228, 0.12);
+      background: rgba(5, 6, 7, 0.78);
+      z-index: 5;
+    }
+
+    .progress {
+      min-width: 180px;
+      height: 7px;
+      border-radius: 999px;
+      background: rgba(245, 240, 228, 0.12);
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 0;
+      background: linear-gradient(90deg, var(--red), var(--amber));
+      border-radius: inherit;
+    }
+
+    .footer-left,
+    .footer-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .slide-count {
+      color: var(--muted);
+      font-size: 0.83rem;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+
+    .notes {
+      display: none;
+      color: var(--soft);
+      border-left: 2px solid rgba(228, 168, 59, 0.74);
+      padding-left: 13px;
+      font-size: 0.92rem;
+      line-height: 1.48;
+      max-width: 780px;
+    }
+
+    body.show-notes .slide.active .notes {
+      display: block;
+    }
+
+    .accent-red {
+      color: var(--red);
+    }
+
+    .accent-blue {
+      color: var(--blue);
+    }
+
+    .accent-amber {
+      color: var(--amber);
+    }
+
+    @media (max-width: 1160px) {
+      body {
+        overflow: auto;
+      }
+
+      .shell {
+        height: auto;
+        min-height: 100vh;
+        grid-template-rows: auto auto auto;
+      }
+
+      .stage {
+        grid-template-columns: 1fr;
+      }
+
+      .rail {
+        border-right: 0;
+        border-bottom: 1px solid rgba(245, 240, 228, 0.11);
+      }
+
+      .slide-list {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .deck {
+        min-height: 760px;
+      }
+
+      .hero-layout,
+      .two-col,
+      .demo-path {
+        grid-template-columns: 1fr;
+      }
+
+      .matrix {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .flow {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .flow-step::after {
+        display: none;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .topbar,
+      .footer {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .status-strip {
+        justify-content: flex-start;
+      }
+
+      .slide {
+        padding: 22px 16px;
+      }
+
+      .slide-list,
+      .matrix,
+      .three-col,
+      .flow {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-title {
+        font-size: 2.85rem;
+      }
+
+      .headline h2 {
+        font-size: 2rem;
+      }
+
+      .hero-lockup {
+        min-height: 540px;
+      }
+
+      .monolith {
+        grid-template-columns: 1fr;
+      }
+
+      .layer,
+      .evidence-row {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media print {
+      html,
+      body {
+        background: #fff;
+        color: #111;
+        overflow: visible;
+      }
+
+      .shell {
+        display: block;
+        height: auto;
+      }
+
+      .topbar,
+      .rail,
+      .footer {
+        display: none;
+      }
+
+      .stage,
+      .deck {
+        display: block;
+      }
+
+      .slide {
+        position: relative;
+        opacity: 1;
+        pointer-events: auto;
+        transform: none;
+        min-height: 100vh;
+        page-break-after: always;
+        color: #111;
+        background: #fff;
+      }
+
+      .tile,
+      .layer-name,
+      .layer-body,
+      .terminal,
+      .diagram,
+      .hero-lockup,
+      .evidence-row {
+        color: #111;
+        background: #fff;
+        border-color: #999;
+        box-shadow: none;
+      }
+
+      .tile p,
+      .tile li,
+      .headline p,
+      .hero-copy,
+      .layer-body,
+      .evidence-row p,
+      .subhead,
+      .notes {
+        color: #333;
+      }
+    }
+
+    /* ARC brand correction: retain HAL name, remove literal HAL-eye styling. */
+    :root {
+      --red: #5E5CE6;
+      --red-dark: #3330A3;
+      --amber: #00D4FF;
+      --blue: #5E5CE6;
+      --green: #44FF88;
+    }
+
+    .topbar {
+      background:
+        linear-gradient(90deg, rgba(94, 92, 230, 0.22), transparent 34%),
+        linear-gradient(180deg, rgba(18, 18, 18, 0.98), rgba(5, 5, 5, 0.98));
+      border-bottom-color: rgba(94, 92, 230, 0.56);
+    }
+
+    .lens {
+      width: 76px;
+      height: 48px;
+      border-radius: 4px;
+      display: grid;
+      place-items: center;
+      background:
+        linear-gradient(to right, rgba(255,255,255,.08) 0 1px, transparent 1px 18px),
+        linear-gradient(to bottom, rgba(255,255,255,.08) 0 1px, transparent 1px 18px),
+        #050505;
+      border: 1px solid rgba(245, 240, 228, 0.24);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.05), 0 12px 30px rgba(0,0,0,.38);
+    }
+
+    .lens::before {
+      content: "ARC";
+      color: #fff;
+      font-family: Newsreader, Georgia, serif;
+      font-size: 27px;
+      font-weight: 760;
+    }
+
+    .lens::after {
+      display: none;
+    }
+
+    .hero-lockup {
+      background:
+        linear-gradient(to right, rgba(255,255,255,.05) 0 1px, transparent 1px 48px),
+        linear-gradient(to bottom, rgba(255,255,255,.05) 0 1px, transparent 1px 48px),
+        linear-gradient(135deg, rgba(94,92,230,.14), transparent 36%),
+        #050505;
+    }
+
+    .hero-lens {
+      width: 286px;
+      height: 174px;
+      left: calc(50% - 143px);
+      top: 72px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      background:
+        linear-gradient(to right, rgba(255,255,255,.08) 0 1px, transparent 1px 28px),
+        linear-gradient(to bottom, rgba(255,255,255,.08) 0 1px, transparent 1px 28px),
+        #050505;
+      border: 1px solid rgba(245, 240, 228, 0.2);
+      box-shadow: 0 0 84px rgba(94, 92, 230, 0.24), inset 0 0 0 1px rgba(255,255,255,.04);
+    }
+
+    .hero-lens::before {
+      content: "ARC";
+      color: #fff;
+      font-family: Newsreader, Georgia, serif;
+      font-size: 78px;
+      font-weight: 760;
+      line-height: 1;
+    }
+
+    .hero-lens::after {
+      content: "HAL-9000 RESEARCH OS";
+      position: absolute;
+      top: auto;
+      left: 0;
+      right: 0;
+      bottom: 20px;
+      width: auto;
+      height: auto;
+      border-radius: 0;
+      background: transparent;
+      color: var(--muted);
+      font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+      font-weight: 760;
+      text-align: center;
+      filter: none;
+    }
+
+    .progress-bar {
+      background: linear-gradient(90deg, #5E5CE6, #00D4FF);
+    }
+
+    .accent-red {
+      color: #5E5CE6;
+    }
+
+    button.primary,
+    button.primary:hover {
+      background: linear-gradient(180deg, #5E5CE6, #3330A3);
+      color: #fff;
+      border-color: rgba(255,255,255,.18);
+    }
+
+    .slide-tab.active {
+      background:
+        linear-gradient(90deg, rgba(94,92,230,0.24), transparent),
+        rgba(21, 29, 34, 0.92);
+      border-color: rgba(94,92,230,0.72);
+    }
+
+    .tab-index,
+    .kicker {
+      color: #00D4FF;
+    }
+
+    .headline h2,
+    .hero-title {
+      font-family: Newsreader, Georgia, serif;
+      font-weight: 680;
+    }
+
+    .lens img,
+    .hero-lens img {
+      display: block;
+      object-fit: contain;
+      filter: drop-shadow(0 18px 30px rgba(255,255,255,.08));
+    }
+
+    .lens img {
+      width: 46px;
+      height: 42px;
+    }
+
+    .hero-lens img {
+      width: 132px;
+      height: 118px;
+    }
+
+    .lens::before,
+    .hero-lens::before {
+      display: none;
+    }
+
+    /* ARC investor-style typography pass from ARC_Style_Guide.md. */
+    :root {
+      --black: #0A0A0A;
+      --black-2: #111111;
+      --charcoal: #111111;
+      --panel: #111111;
+      --panel-2: #151515;
+      --line: rgba(107, 114, 128, 0.42);
+      --cream: #E8E6E1;
+      --muted: #9CA3AF;
+      --soft: rgba(255,255,255,.74);
+    }
+
+    html,
+    body {
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-weight: 400;
+      background:
+        linear-gradient(to right, rgba(94,92,230,.09) 0 1px, transparent 1px 72px),
+        linear-gradient(to bottom, rgba(94,92,230,.07) 0 1px, transparent 1px 72px),
+        linear-gradient(180deg, #111111 0%, #0A0A0A 46%, #111111 100%);
+    }
+
+    h1,
+    h2,
+    h3,
+    button,
+    .tab-label,
+    .status-pill,
+    .slide-count,
+    .kicker {
+      letter-spacing: 0;
+    }
+
+    .topbar h1 {
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      font-size: 30px;
+      font-weight: 600;
+      line-height: 1;
+    }
+
+    .subhead,
+    .hero-copy,
+    .headline p,
+    .tile p,
+    .tile li,
+    .flow-step p,
+    .layer-body,
+    .evidence-row p,
+    .notes {
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      font-weight: 400;
+      color: var(--soft);
+    }
+
+    .kicker,
+    .status-pill,
+    .rail h2,
+    .tab-label,
+    .tile h3,
+    .flow-step h3,
+    .diagram-label strong,
+    .terminal-top,
+    .evidence-tag,
+    .layer-name,
+    button {
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .kicker {
+      font-size: 13px;
+      color: #00D4FF;
+    }
+
+    .hero-title {
+      font-family: Newsreader, Georgia, serif;
+      font-size: 82px;
+      line-height: .9;
+      font-weight: 400;
+      color: #fff;
+      max-width: 860px;
+    }
+
+    .hero-copy {
+      font-size: 20px;
+      line-height: 1.48;
+      max-width: 720px;
+    }
+
+    .headline h2 {
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      font-size: 40px;
+      line-height: 1.08;
+      font-weight: 600;
+      color: #fff;
+      max-width: 940px;
+    }
+
+    .headline p {
+      font-size: 18px;
+      line-height: 1.52;
+      max-width: 900px;
+    }
+
+    .metric-number,
+    .metric strong,
+    .tab-index,
+    .flow-index,
+    .terminal-code,
+    pre {
+      font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-weight: 500;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .metric-number {
+      font-size: 56px;
+      line-height: 1;
+      color: #fff;
+    }
+
+    .metric-label {
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .tile,
+    .flow-step,
+    .layer-name,
+    .layer-body,
+    .evidence-row,
+    .terminal,
+    .diagram,
+    .hero-lockup {
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.035), transparent 34%),
+        #111111;
+      border-color: rgba(107,114,128,.32);
+    }
+
+    .tile h3,
+    .flow-step h3 {
+      font-size: 15px;
+      color: #fff;
+    }
+
+    .tile p,
+    .tile li {
+      font-size: 16px;
+      line-height: 1.48;
+    }
+
+    .rail,
+    .footer {
+      background: rgba(10,10,10,.82);
+    }
+
+    .slide-tab,
+    .rail-panel,
+    .tabs,
+    button.ghost {
+      background: rgba(17,17,17,.74);
+      border-color: rgba(107,114,128,.28);
+    }
+
+    .slide-tab.active {
+      background:
+        linear-gradient(90deg, rgba(94,92,230,.28), transparent),
+        #111111;
+      border-color: rgba(94,92,230,.72);
+    }
+
+    .tab-index {
+      color: #00D4FF;
+      background: #0A0A0A;
+    }
+
+    button {
+      font-size: 12px;
+      border-radius: 3px;
+      min-height: 42px;
+    }
+
+    .terminal-code {
+      font-size: 14px;
+    }
+
+    @media (max-width: 720px) {
+      .hero-title {
+        font-size: 48px;
+      }
+
+      .headline h2 {
+        font-size: 32px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="lens" aria-hidden="true"><img src="../assets/arc-logo-metal.png" alt=""></div>
+        <div>
+          <p class="kicker">ARC Research OS Demo</p>
+          <h1>HAL-9000 Capabilities</h1>
+          <p class="subhead">Research OS foundation with an agent nervous system</p>
+        </div>
+      </div>
+      <div class="status-strip" aria-label="briefing status">
+        <span class="status-pill"><span class="status-light"></span>Rebuild foundation</span>
+        <span class="status-pill">Source-backed outputs</span>
+        <span class="status-pill">Human approval gates</span>
+      </div>
+    </header>
+
+    <main class="stage">
+      <aside class="rail">
+        <h2>Flight Plan</h2>
+        <nav class="slide-list" id="slideList" aria-label="presentation slides"></nav>
+        <div class="rail-panel">
+          <p>HAL-9000 is being rebuilt as a shared, auditable research operating system. The agent layer is a graft: it gives HAL durable execution mechanics without replacing HAL's research memory, provenance, or review model.</p>
+        </div>
+      </aside>
+
+      <section class="deck" id="deck" aria-live="polite">
+        <article class="slide active" data-title="Opening">
+          <div class="slide-shell hero-layout">
+            <div>
+              <p class="kicker">HAL-9000</p>
+              <h2 class="hero-title">A research OS for source-backed scientific work.</h2>
+              <p class="hero-copy">HAL connects acquisition, PDF processing, semantic memory, graph relationships, agent execution, review, collaboration, and exports around one durable ledger.</p>
+              <p class="notes">Opening line: HAL is not a chatbot wrapper. It is a platform pattern for keeping scientific work inspectable after the model finishes talking.</p>
+            </div>
+            <div class="hero-lockup" aria-label="HAL-9000 cockpit visual">
+              <div class="hero-lens" aria-hidden="true"><img src="../assets/arc-logo-metal.png" alt=""></div>
+              <div class="monolith">
+                <div class="mono-panel">
+                  <strong>Observe</strong>
+                  <span>Acquire papers, parse PDFs, normalize metadata, and retain source records.</span>
+                </div>
+                <div class="mono-panel">
+                  <strong>Reason</strong>
+                  <span>Retrieve chunks, claims, outputs, and graph neighborhoods before generation.</span>
+                </div>
+                <div class="mono-panel">
+                  <strong>Review</strong>
+                  <span>Stage outputs, cite evidence, capture decisions, and export to working systems.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="slide" data-title="Positioning">
+          <div class="slide-shell">
+            <div class="headline">
+              <p class="kicker">The Platform Move</p>
+              <h2>HAL keeps the research OS. The agent runtime supplies the nervous system.</h2>
+              <p>The rebuild is a deliberate graft. Research programs, provenance, canonical storage, graph memory, review, exports, and governance remain HAL-owned. The ml-intern-inspired runtime adds sessions, model routing, context compaction, tool approvals, and cloud compute adapters.</p>
+            </div>
+            <div class="three-col">
+              <div class="tile">
+                <h3>Research contract</h3>
+                <p>Programs declare objective, scope, budgets, tools, and required outputs before execution begins.</p>
+              </div>
+              <div class="tile">
+                <h3>Agent execution</h3>
+                <p>Sessions stream events, call approved tools, compact context, and record every meaningful operation.</p>
+              </div>
+              <div class="tile">
+                <h3>Reviewable memory</h3>
+                <p>Generated work is staged against sources, claims, graph edges, output versions, and review decisions.</p>
+              </div>
+            </div>
+            <p class="notes">This is the central architectural point. HAL should feel modern because the agent experience is live, but the important difference is that the live layer cannot escape the ledger.</p>
+          </div>
+        </article>
+
+        <article class="slide" data-title="Capability Loop">
+          <div class="slide-shell">
+            <div class="headline">
+              <p class="kicker">End-To-End Loop</p>
+              <h2>From raw literature to audited research output.</h2>
+              <p>The core capability is not a single model answer. It is a repeatable loop that leaves behind durable evidence.</p>
+            </div>
+            <div class="flow">
+              <div class="flow-step">
+                <div class="flow-index">01</div>
+                <h3>Acquire</h3>
+                <p>Search Semantic Scholar, arXiv, Unpaywall, and local corpora.</p>
+              </div>
+              <div class="flow-step">
+                <div class="flow-index">02</div>
+                <h3>Ingest</h3>
+                <p>Process PDFs, extract metadata, figures, tables, chunks, and claims.</p>
+              </div>
+              <div class="flow-step">
+                <div class="flow-index">03</div>
+                <h3>Remember</h3>
+                <p>Store documents, chunks, claims, outputs, vectors, and graph edges.</p>
+              </div>
+              <div class="flow-step">
+                <div class="flow-index">04</div>
+                <h3>Retrieve</h3>
+                <p>Search across text memory and entity neighborhoods before generation.</p>
+              </div>
+              <div class="flow-step">
+                <div class="flow-index">05</div>
+                <h3>Generate</h3>
+                <p>Render briefs, evidence tables, hypotheses, and ADAM contexts.</p>
+              </div>
+              <div class="flow-step">
+                <div class="flow-index">06</div>
+                <h3>Review</h3>
+                <p>Promote, reject, annotate, diff versions, and inspect audit trails.</p>
+              </div>
+              <div class="flow-step">
+                <div class="flow-index">07</div>
+                <h3>Export</h3>
+                <p>Publish Markdown, JSON, Obsidian, dashboards, and ADAM-ready context.</p>
+              </div>
+            </div>
+            <p class="notes">This slide is useful for any technical audience because it maps HAL onto research operations rather than chat demos. Every step can be inspected independently.</p>
+          </div>
+        </article>
+
+        <article class="slide" data-title="Architecture">
+          <div class="slide-shell">
+            <div class="headline">
+              <p class="kicker">System Shape</p>
+              <h2>One platform, multiple surfaces, one source of truth.</h2>
+              <p>HAL is organized around a canonical research store. CLI, browser cockpit, Slack, Sheets, workers, and agent sessions all operate over the same records.</p>
+            </div>
+            <div class="architecture">
+              <div class="layer">
+                <div class="layer-name">Interfaces</div>
+                <div class="layer-body">CLI, browser cockpit, review UI, Slack commands and actions, Sheets writeback, API gateway.</div>
+              </div>
+              <div class="layer">
+                <div class="layer-name">Agent Runtime</div>
+                <div class="layer-body">Session creation, streaming submit, approvals, interruption, replay, history, model selection, LiteLLM provider retries.</div>
+              </div>
+              <div class="layer">
+                <div class="layer-name">Research Services</div>
+                <div class="layer-body">Acquisition, PDF processing, memory search, output staging, exports, ADAM context, review, graph edges.</div>
+              </div>
+              <div class="layer">
+                <div class="layer-name">Knowledge Layer</div>
+                <div class="layer-body">Documents, chunks, extracted claims, evidence links, vector embeddings, project graph, entity neighborhoods.</div>
+              </div>
+              <div class="layer">
+                <div class="layer-name">Governance</div>
+                <div class="layer-body">Permissions, tool budgets, approval gates, retention policy, legal hold, provider secrets, copyright checks.</div>
+              </div>
+              <div class="layer">
+                <div class="layer-name">Operations</div>
+                <div class="layer-body">Postgres-ready migrations, S3-compatible artifacts, packaged gateway and scheduler services, CI, changelog, release workflow.</div>
+              </div>
+            </div>
+            <p class="notes">The important phrase is "same records." HAL's non-CLI interfaces are not separate products. They are different views over the research ledger.</p>
+          </div>
+        </article>
+
+        <article class="slide" data-title="Agent Graft">
+          <div class="slide-shell">
+            <div class="headline">
+              <p class="kicker">Agent Nervous System</p>
+              <h2>Interactive agents with durable boundaries.</h2>
+              <p>The graft gives HAL a modern session experience while preserving run accounting and human control.</p>
+            </div>
+            <div class="matrix">
+              <div class="tile">
+                <h3>Model adapter</h3>
+                <p>LiteLLM-style routing resolves model config and retries transient provider failures across OpenAI, Anthropic, Hugging Face, and local endpoints.</p>
+              </div>
+              <div class="tile">
+                <h3>Tool approvals</h3>
+                <p>Gated operations pause active turns until policy or a human decision authorizes the tool call.</p>
+              </div>
+              <div class="tile">
+                <h3>Context compaction</h3>
+                <p>Long sessions preserve the system prompt, first task, recent context, and provider-valid tool pairs.</p>
+              </div>
+              <div class="tile">
+                <h3>Event replay</h3>
+                <p>Gateway sessions can recover from durable run events instead of relying only on live memory.</p>
+              </div>
+              <div class="tile">
+                <h3>HAL tools</h3>
+                <p>Acquisition, PDFs, memory search, staged outputs, exports, ADAM context, reviews, and graph edges are exposed through approved service adapters.</p>
+              </div>
+              <div class="tile">
+                <h3>HF compute</h3>
+                <p>Jobs, scheduled jobs, repo operations, artifact harvests, and sandbox actions attach outputs and events to HAL runs.</p>
+              </div>
+              <div class="tile">
+                <h3>Budget records</h3>
+                <p>Tool calls, runtime limits, LLM calls, and warnings are captured as operational telemetry.</p>
+              </div>
+              <div class="tile">
+                <h3>Interruptibility</h3>
+                <p>Sessions can compact, interrupt, approve, replay, and inspect history through the gateway API.</p>
+              </div>
+            </div>
+            <p class="notes">This is where the ml-intern inspiration shows up. HAL is adopting the mechanics, not handing over product ownership.</p>
+          </div>
+        </article>
+
+        <article class="slide" data-title="Evidence">
+          <div class="slide-shell demo-path">
+            <div>
+              <div class="headline">
+                <p class="kicker">Source-Backed Output</p>
+                <h2>Every answer should be able to show its work.</h2>
+                <p>HAL stages outputs with links back to documents, chunks, claims, figures, tables, graph edges, tool calls, and review decisions.</p>
+              </div>
+              <div class="evidence-stack" style="margin-top: 20px;">
+                <div class="evidence-row">
+                  <div class="evidence-tag">Document</div>
+                  <p>Canonical metadata, source quality, citation normalization, dedupe reports, refresh policy, and object storage location.</p>
+                </div>
+                <div class="evidence-row">
+                  <div class="evidence-tag">Claim</div>
+                  <p>Extracted statement linked to evidence chunks and surfaced in semantic and graph-aware retrieval.</p>
+                </div>
+                <div class="evidence-row">
+                  <div class="evidence-tag">Output</div>
+                  <p>Versioned literature briefs, evidence tables, open questions, hypotheses, experiment suggestions, and ADAM context JSON.</p>
+                </div>
+                <div class="evidence-row">
+                  <div class="evidence-tag">Review</div>
+                  <p>Promote, reject, request changes, annotate, comment, diff, and audit who changed what.</p>
+                </div>
+              </div>
+            </div>
+            <div class="terminal">
+              <div class="terminal-top">
+                <span>HAL run ledger</span>
+                <span>source-backed</span>
+              </div>
+              <pre class="terminal-code"><span class="prompt">$</span> hal research search-memory "irradiation resistant alloys" \
+  --project-slug hal-demo \
+  --target chunks --target claims --target outputs
+
+<span class="note">retrieved:</span>
+  documents: 14
+  chunks: 42
+  claims: 18
+  graph_edges: 31
+
+<span class="prompt">$</span> hal research export-run RUN-042 --format adam
+
+<span class="note">staged:</span>
+  literature_brief.md
+  evidence_table.json
+  adam_context.json
+  audit_manifest.json</pre>
+            </div>
+          </div>
+        </article>
+
+        <article class="slide" data-title="Graph Retrieval">
+          <div class="slide-shell">
+            <div class="headline">
+              <p class="kicker">Knowledge Graph</p>
+              <h2>Retrieval gets stronger when entities can explain their neighborhood.</h2>
+              <p>HAL stores graph edges such as cites, supports, contradicts, uses method, studies material, and reports property. Those relationships can become visible panels, graph exports, and optional retrieval boosts.</p>
+            </div>
+            <div class="diagram">
+              <canvas id="graphCanvas" aria-label="animated HAL knowledge graph"></canvas>
+              <div class="diagram-label">
+                <strong>Project graph payload</strong>
+                <span>Entity neighborhoods connect documents, materials, methods, properties, claims, and outputs for reviewable context.</span>
+              </div>
+            </div>
+            <p class="notes">The visual is intentionally more cockpit than whiteboard. The underlying point is practical: graph edges let HAL retrieve relationship context, not just similar text.</p>
+          </div>
+        </article>
+
+        <article class="slide" data-title="Collaboration">
+          <div class="slide-shell">
+            <div class="headline">
+              <p class="kicker">Human-In-The-Loop Research</p>
+              <h2>HAL meets users where review already happens.</h2>
+              <p>The system exposes the same run state through a cockpit, review queue, Slack actions, Sheets operational views, and exported artifacts.</p>
+            </div>
+            <div class="three-col">
+              <div class="tile">
+                <h3>Browser cockpit</h3>
+                <ul>
+                  <li>Streaming chat sessions</li>
+                  <li>Approval dialogs</li>
+                  <li>Model picker</li>
+                  <li>Evidence, review, graph panels</li>
+                </ul>
+              </div>
+              <div class="tile">
+                <h3>Slack workflow</h3>
+                <ul>
+                  <li>Queue runs</li>
+                  <li>Post summaries</li>
+                  <li>Open review detail</li>
+                  <li>Promote or request changes</li>
+                </ul>
+              </div>
+              <div class="tile">
+                <h3>Sheets cockpit</h3>
+                <ul>
+                  <li>Run queue</li>
+                  <li>Review queue</li>
+                  <li>Output index</li>
+                  <li>Audit and cost views</li>
+                </ul>
+              </div>
+            </div>
+            <div class="two-col">
+              <div class="tile metric">
+                <div>
+                  <div class="metric-number">1</div>
+                  <div class="metric-label">Canonical research ledger shared by all interfaces.</div>
+                </div>
+              </div>
+              <div class="tile metric">
+                <div>
+                  <div class="metric-number">N</div>
+                  <div class="metric-label">Surfaces for different users: CLI, browser, Slack, Sheets, and API clients.</div>
+                </div>
+              </div>
+            </div>
+            <p class="notes">This matters for field adoption. HAL should not force every scientist, PM, or reviewer into the CLI to participate in the research loop.</p>
+          </div>
+        </article>
+
+        <article class="slide" data-title="Governance">
+          <div class="slide-shell">
+            <div class="headline">
+              <p class="kicker">Operational Control</p>
+              <h2>State-of-the-art research systems need brakes, not just acceleration.</h2>
+              <p>HAL's rebuilt platform includes governance primitives that make powerful agent behavior easier to inspect, contain, and release responsibly.</p>
+            </div>
+            <div class="matrix">
+              <div class="tile">
+                <h3>Permissions</h3>
+                <p>Users, teams, roles, project grants, and SSO/OIDC planning sit behind review and gateway actions.</p>
+              </div>
+              <div class="tile">
+                <h3>Retention</h3>
+                <p>Policies cover operational rows, PDFs, artifacts, logs, generated outputs, and legal-hold safeguards.</p>
+              </div>
+              <div class="tile">
+                <h3>Secrets</h3>
+                <p>Provider secret-manager abstraction keeps model APIs, Slack, Sheets, and HF credentials out of ordinary config paths.</p>
+              </div>
+              <div class="tile">
+                <h3>Copyright checks</h3>
+                <p>PDF handling and generated summaries can be screened before artifacts move through the system.</p>
+              </div>
+              <div class="tile">
+                <h3>CI and release</h3>
+                <p>Ruff, type checks, MkDocs strict build, package build, pytest, changelog automation, and service packaging.</p>
+              </div>
+              <div class="tile">
+                <h3>Observability</h3>
+                <p>Run metrics, queue metrics, tool calls, costs, errors, latency, acquisition outcomes, and worker status.</p>
+              </div>
+              <div class="tile">
+                <h3>Artifacts</h3>
+                <p>Local and S3-compatible object storage keep PDFs, generated outputs, HF job results, and manifests durable.</p>
+              </div>
+              <div class="tile">
+                <h3>Replay</h3>
+                <p>Durable gateway events let session history recover across runtime restarts.</p>
+              </div>
+            </div>
+            <p class="notes">For technical and commercial audiences, the serious differentiator is not that HAL can use agents. It is that HAL can make agent use governable.</p>
+          </div>
+        </article>
+
+        <article class="slide" data-title="Demo Script">
+          <div class="slide-shell demo-path">
+            <div>
+              <div class="headline">
+                <p class="kicker">Presentation Path</p>
+                <h2>A crisp live demo can prove the loop.</h2>
+                <p>Seed a project, search memory, open the cockpit, stage output, inspect evidence, approve a gated operation, and export a manifest.</p>
+              </div>
+              <div class="three-col" style="margin-top: 20px;">
+                <div class="tile">
+                  <h3>1. Shared memory</h3>
+                  <p>Show project-scoped search across chunks, claims, outputs, and graph relationships.</p>
+                </div>
+                <div class="tile">
+                  <h3>2. Agent action</h3>
+                  <p>Submit a cockpit request and let HAL surface tool calls, approval state, and model context.</p>
+                </div>
+                <div class="tile">
+                  <h3>3. Review trail</h3>
+                  <p>Open evidence and graph panels, then export the run with an audit manifest.</p>
+                </div>
+              </div>
+            </div>
+            <div class="terminal">
+              <div class="terminal-top">
+                <span>local demo commands</span>
+                <span>repeatable</span>
+              </div>
+              <pre class="terminal-code"><span class="prompt">$</span> hal research demo-seed \
+  --project-slug hal-demo \
+  --owner bwisk@arc-pbc.com
+
+<span class="prompt">$</span> hal gateway http \
+  --host 127.0.0.1 \
+  --port 9101
+
+<span class="prompt">$</span> open http://127.0.0.1:9101/ui
+
+<span class="note">show:</span>
+  sessions
+  approvals
+  evidence
+  review
+  graph
+  exports</pre>
+            </div>
+            <p class="notes">Keep the live demo contained. The best proof is not model flash; it is seeing the same run move through memory, review, graph, export, and audit.</p>
+          </div>
+        </article>
+
+        <article class="slide" data-title="Status">
+          <div class="slide-shell">
+            <div class="headline">
+              <p class="kicker">Where The Rebuild Stands</p>
+              <h2>Platform foundation is built. The next work is production depth.</h2>
+              <p>The current branch has crossed the threshold from plan to coherent research OS foundation. Remaining work is focused hardening, especially around production HF compute backends, quotas, and retention coverage.</p>
+            </div>
+            <div class="two-col">
+              <div class="tile">
+                <h3>Built in the foundation</h3>
+                <ul>
+                  <li>Research programs and shared store</li>
+                  <li>PDF ingestion, claims, vectors, graph edges</li>
+                  <li>Agent sessions, tools, approvals, compaction</li>
+                  <li>Review, outputs, exports, ADAM context</li>
+                  <li>Slack, Sheets, cockpit, gateway replay</li>
+                  <li>Retention, compliance, secrets, release polish</li>
+                </ul>
+              </div>
+              <div class="tile">
+                <h3>Next production focus</h3>
+                <ul>
+                  <li>HF compute retention and quotas</li>
+                  <li>Production backend coverage for remote sandboxes</li>
+                  <li>Staging Slack and Sheets verification</li>
+                  <li>Team-specific deployment configuration</li>
+                  <li>Representative corpus benchmark runs</li>
+                  <li>Demo Google Sheet and staging tunnel setup</li>
+                </ul>
+              </div>
+            </div>
+            <div class="three-col">
+              <div class="tile metric">
+                <div>
+                  <div class="metric-number">656</div>
+                  <div class="metric-label">pytest checks passed in the latest full-suite validation.</div>
+                </div>
+              </div>
+              <div class="tile metric">
+                <div>
+                  <div class="metric-number">76</div>
+                  <div class="metric-label">files included in the rebuild foundation commit.</div>
+                </div>
+              </div>
+              <div class="tile metric">
+                <div>
+                  <div class="metric-number">1</div>
+                  <div class="metric-label">draft PR carrying the current foundation branch for review.</div>
+                </div>
+              </div>
+            </div>
+            <p class="notes">End honestly. This is strong enough to present as a platform foundation, not as a fully hardened production deployment.</p>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-left">
+        <button class="ghost" id="prevBtn" type="button">Previous</button>
+        <button class="primary" id="nextBtn" type="button">Next</button>
+        <span class="slide-count" id="slideCount">01 / 10</span>
+      </div>
+      <div class="progress" aria-hidden="true">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+      <div class="footer-right">
+        <button class="ghost" id="notesBtn" type="button">Notes</button>
+        <button class="ghost" id="printBtn" type="button">Print</button>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    const slides = Array.from(document.querySelectorAll(".slide"));
+    const slideList = document.getElementById("slideList");
+    const slideCount = document.getElementById("slideCount");
+    const progressBar = document.getElementById("progressBar");
+    const prevBtn = document.getElementById("prevBtn");
+    const nextBtn = document.getElementById("nextBtn");
+    const notesBtn = document.getElementById("notesBtn");
+    const printBtn = document.getElementById("printBtn");
+    let current = 0;
+
+    function pad(value) {
+      return String(value).padStart(2, "0");
+    }
+
+    function renderTabs() {
+      slideList.innerHTML = "";
+      slides.forEach((slide, index) => {
+        const button = document.createElement("button");
+        button.className = "slide-tab";
+        button.type = "button";
+        button.innerHTML = `<span class="tab-index">${pad(index + 1)}</span><span class="tab-label">${slide.dataset.title}</span>`;
+        button.addEventListener("click", () => showSlide(index));
+        slideList.appendChild(button);
+      });
+    }
+
+    function showSlide(index) {
+      current = (index + slides.length) % slides.length;
+      slides.forEach((slide, slideIndex) => {
+        slide.classList.toggle("active", slideIndex === current);
+      });
+      Array.from(slideList.children).forEach((tab, tabIndex) => {
+        tab.classList.toggle("active", tabIndex === current);
+      });
+      slideCount.textContent = `${pad(current + 1)} / ${pad(slides.length)}`;
+      progressBar.style.width = `${((current + 1) / slides.length) * 100}%`;
+      prevBtn.disabled = current === 0;
+      nextBtn.textContent = current === slides.length - 1 ? "Restart" : "Next";
+    }
+
+    prevBtn.addEventListener("click", () => showSlide(current - 1));
+    nextBtn.addEventListener("click", () => {
+      if (current === slides.length - 1) {
+        showSlide(0);
+      } else {
+        showSlide(current + 1);
+      }
+    });
+    notesBtn.addEventListener("click", () => {
+      document.body.classList.toggle("show-notes");
+    });
+    printBtn.addEventListener("click", () => window.print());
+    window.addEventListener("keydown", (event) => {
+      if (event.target && ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) {
+        return;
+      }
+      if (event.key === "ArrowRight" || event.key === "PageDown" || event.key === " ") {
+        event.preventDefault();
+        showSlide(current + 1);
+      }
+      if (event.key === "ArrowLeft" || event.key === "PageUp") {
+        event.preventDefault();
+        showSlide(current - 1);
+      }
+      if (event.key.toLowerCase() === "n") {
+        document.body.classList.toggle("show-notes");
+      }
+    });
+
+    renderTabs();
+    showSlide(0);
+
+    const canvas = document.getElementById("graphCanvas");
+    const context = canvas.getContext("2d");
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const graphNodes = [
+      { label: "Project", x: 0.5, y: 0.5, color: "#5E5CE6", size: 26 },
+      { label: "Documents", x: 0.2, y: 0.24, color: "#00D4FF", size: 16 },
+      { label: "Chunks", x: 0.34, y: 0.78, color: "#A5B4FC", size: 15 },
+      { label: "Claims", x: 0.72, y: 0.24, color: "#44FF88", size: 17 },
+      { label: "Methods", x: 0.84, y: 0.62, color: "#FFAA00", size: 14 },
+      { label: "Materials", x: 0.63, y: 0.78, color: "#00D4FF", size: 15 },
+      { label: "Outputs", x: 0.18, y: 0.58, color: "#f5f0e4", size: 14 },
+      { label: "Review", x: 0.82, y: 0.84, color: "#5E5CE6", size: 14 },
+      { label: "ADAM", x: 0.5, y: 0.16, color: "#f5f0e4", size: 13 }
+    ];
+    const graphEdges = [
+      [0, 1], [1, 2], [2, 0], [0, 3], [3, 4], [3, 5], [2, 6],
+      [6, 7], [5, 7], [0, 8], [8, 3], [4, 6], [1, 3], [5, 6]
+    ];
+
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      const ratio = window.devicePixelRatio || 1;
+      canvas.width = Math.floor(rect.width * ratio);
+      canvas.height = Math.floor(rect.height * ratio);
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    }
+
+    function drawGraph(time) {
+      const rect = canvas.getBoundingClientRect();
+      context.clearRect(0, 0, rect.width, rect.height);
+      context.fillStyle = "rgba(5, 6, 7, 0.86)";
+      context.fillRect(0, 0, rect.width, rect.height);
+
+      const pulse = reduceMotion ? 0 : Math.sin(time / 900) * 0.5 + 0.5;
+      graphEdges.forEach(([from, to], edgeIndex) => {
+        const a = graphNodes[from];
+        const b = graphNodes[to];
+        const ax = a.x * rect.width;
+        const ay = a.y * rect.height;
+        const bx = b.x * rect.width;
+        const by = b.y * rect.height;
+        context.beginPath();
+        context.moveTo(ax, ay);
+        context.lineTo(bx, by);
+        context.strokeStyle = edgeIndex % 3 === 0
+          ? `rgba(94, 92, 230, ${0.18 + pulse * 0.18})`
+          : `rgba(0, 212, 255, ${0.14 + pulse * 0.12})`;
+        context.lineWidth = 1.4;
+        context.stroke();
+      });
+
+      graphNodes.forEach((node, index) => {
+        const drift = reduceMotion ? 0 : Math.sin(time / 800 + index) * 4;
+        const x = node.x * rect.width;
+        const y = node.y * rect.height + drift;
+        const radius = node.size + (index === 0 ? pulse * 5 : pulse * 2);
+
+        context.beginPath();
+        context.arc(x, y, radius + 10, 0, Math.PI * 2);
+        context.fillStyle = index === 0 ? "rgba(94, 92, 230, 0.14)" : "rgba(245, 240, 228, 0.05)";
+        context.fill();
+
+        context.beginPath();
+        context.arc(x, y, radius, 0, Math.PI * 2);
+        context.fillStyle = node.color;
+        context.fill();
+        context.strokeStyle = "rgba(245, 240, 228, 0.72)";
+        context.lineWidth = 1;
+        context.stroke();
+
+        context.font = "760 13px Inter, ui-sans-serif, system-ui";
+        context.textAlign = "center";
+        context.textBaseline = "top";
+        context.fillStyle = "rgba(245, 240, 228, 0.92)";
+        context.fillText(node.label, x, y + radius + 12);
+      });
+
+      if (!reduceMotion) {
+        requestAnimationFrame(drawGraph);
+      }
+    }
+
+    window.addEventListener("resize", resizeCanvas);
+    resizeCanvas();
+    requestAnimationFrame(drawGraph);
+  </script>
+</body>
+</html>

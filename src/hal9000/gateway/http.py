@@ -9,6 +9,7 @@ import os
 import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -64,6 +65,9 @@ def create_gateway_http_handler(
                 parsed = urlparse(self.path)
                 if parsed.path in {"/", "/ui"}:
                     self._send_html(frontend_html())
+                    return
+                if parsed.path == "/assets/arc-logo-metal.png":
+                    self._send_static_asset("arc-logo-metal.png", "image/png")
                     return
                 if parsed.path == "/health":
                     self._send_json({"status": "ok", "service": "hal-app-gateway"})
@@ -353,6 +357,18 @@ def create_gateway_http_handler(
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(data)
+
+        def _send_static_asset(self, filename: str, content_type: str) -> None:
+            asset_path = Path(__file__).with_name("static") / filename
+            if not asset_path.exists():
+                raise GatewayHTTPError(HTTPStatus.NOT_FOUND, f"Unknown asset: {filename}")
+            data = asset_path.read_bytes()
+            self.send_response(HTTPStatus.OK.value)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "public, max-age=3600")
             self.end_headers()
             self.wfile.write(data)
 

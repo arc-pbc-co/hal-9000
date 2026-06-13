@@ -15,11 +15,11 @@ from hal9000.security import MappingSecretManager
 def test_resolve_litellm_params_for_anthropic_with_effort():
     """Anthropic models should keep native ids and adaptive effort params."""
     params = resolve_litellm_params(
-        "anthropic/claude-sonnet-4-20250514",
+        "anthropic/claude-opus-4-8",
         reasoning_effort="high",
     )
 
-    assert params["model"] == "anthropic/claude-sonnet-4-20250514"
+    assert params["model"] == "anthropic/claude-opus-4-8"
     assert params["thinking"] == {"type": "adaptive"}
     assert params["output_config"] == {"effort": "high"}
 
@@ -29,6 +29,24 @@ def test_resolve_litellm_params_for_openai_with_effort():
     params = resolve_litellm_params("openai/gpt-5.5", reasoning_effort="xhigh")
 
     assert params == {"model": "openai/gpt-5.5", "reasoning_effort": "xhigh"}
+
+
+def test_resolve_litellm_params_for_gemini_with_effort(monkeypatch):
+    """Gemini routes should use LiteLLM's Gemini provider and shared secret lookup."""
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    manager = MappingSecretManager({"HAL9000_GEMINI_API_KEY": "managed-gemini-key"})
+
+    params = resolve_litellm_params(
+        "gemini/gemini-3.5-flash",
+        reasoning_effort="minimal",
+        secret_manager=manager,
+    )
+
+    assert params == {
+        "model": "gemini/gemini-3.5-flash",
+        "api_key": "managed-gemini-key",
+        "reasoning_effort": "minimal",
+    }
 
 
 def test_resolve_litellm_params_for_local_model(monkeypatch):
@@ -89,6 +107,12 @@ def test_resolve_litellm_params_rejects_invalid_effort():
     """Unsupported provider effort values should fail before network calls."""
     with pytest.raises(UnsupportedReasoningEffortError):
         resolve_litellm_params("MiniMaxAI/MiniMax-M2.7", reasoning_effort="xhigh")
+
+
+def test_resolve_litellm_params_rejects_invalid_gemini_effort():
+    """Gemini supports minimal through high, but not OpenAI's xhigh effort."""
+    with pytest.raises(UnsupportedReasoningEffortError):
+        resolve_litellm_params("gemini/gemini-3.5-flash", reasoning_effort="xhigh")
 
 
 def test_parse_litellm_response_with_tool_call():
