@@ -46,8 +46,15 @@ python3 -m hal9000.cli research demo-seed \
 Terminal A:
 
 ```bash
+lsof -nP -iTCP:9101 -sTCP:LISTEN
+
 python3 -m hal9000.cli gateway http --host 127.0.0.1 --port 9101
 ```
+
+If `lsof` already shows a Python/HAL process on `9101`, the cockpit is already
+running; open `http://127.0.0.1:9101/ui` and continue. To restart cleanly, stop
+that process with `kill <PID>`, or use `--port 9104` and open
+`http://127.0.0.1:9104/ui`.
 
 Terminal B:
 
@@ -127,7 +134,9 @@ python3 -m hal9000.cli research export-run <RUN_ID> \
 ## Troubleshooting
 
 - Old styling: hard refresh the browser tab.
-- Port already in use: choose another port and update the URL.
+- Port already in use: the gateway is already running, or another process owns
+  `9101`. Run `lsof -nP -iTCP:9101 -sTCP:LISTEN`, open the existing cockpit,
+  stop it with `kill <PID>`, or start HAL with `--port 9104`.
 - Empty review queue: re-run `demo-seed` with `hal-demo`.
 - Live acquisition fails: continue with seeded data.
 - Full reset: stop servers and remove `.hal9000_demo`.

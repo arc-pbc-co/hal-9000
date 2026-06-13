@@ -1,5 +1,6 @@
 """HAL 9000 Command Line Interface."""
 
+import errno
 import logging
 from pathlib import Path
 from typing import Optional
@@ -31,6 +32,18 @@ def _get_settings_from_context(ctx: click.Context):
     config_path = ctx.obj.get("config_path") if ctx.obj else None
     profile = ctx.obj.get("profile") if ctx.obj else None
     return get_settings(config_file=config_path, environment=profile)
+
+
+def _gateway_port_in_use_message(host: str, port: int) -> str:
+    """Return a presenter-friendly app gateway bind failure message."""
+    url = f"http://{host}:{port}/ui"
+    return (
+        f"The HAL app gateway could not bind {host}:{port} because that address is already in use.\n\n"
+        f"If the cockpit is already running, open {url} and continue the demo.\n"
+        f"To see the process using the port: lsof -nP -iTCP:{port} -sTCP:LISTEN\n"
+        "To stop that process: kill <PID>\n"
+        f"To run another gateway: python3 -m hal9000.cli gateway http --host {host} --port {port + 3}"
+    )
 
 
 def _build_rlm_processor(settings):
@@ -805,6 +818,10 @@ def gateway_http(
         run_gateway_http_server(settings, host, port, slack_signing_secret)
     except KeyboardInterrupt:
         console.print("\n[yellow]Shutdown requested...[/yellow]")
+    except OSError as exc:
+        if exc.errno == errno.EADDRINUSE:
+            raise click.ClickException(_gateway_port_in_use_message(host, port)) from exc
+        raise
     console.print("[green]App gateway stopped.[/green]")
 
 
