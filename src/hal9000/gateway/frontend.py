@@ -887,7 +887,7 @@ def frontend_html() -> str:
     </section>
   </main>
 <script>
-const state = { session: null, lastSequence: 0, events: [], history: [] };
+const state = { session: null, lastSequence: 0, events: [], history: [], pollTimer: null, refreshing: false };
 const $ = (id) => document.getElementById(id);
 function setStatus(text) { $('status').textContent = text; }
 function value(id) { return $(id).value.trim(); }
@@ -959,17 +959,52 @@ async function submitMessage() {
   $('messageText').value = '';
   await api('/api/agent/submit', {method: 'POST', body: JSON.stringify({agent_session_id: value('agentSessionId'), text})});
   setStatus('Submitted');
+  startAgentPolling();
   setTimeout(refreshAgent, 400);
 }
 async function refreshAgent() {
+  if (state.refreshing) return;
   const id = value('agentSessionId');
   if (!id) return;
-  const replay = await api(`/api/agent/replay?agent_session_id=${encodeURIComponent(id)}&after_sequence=${state.lastSequence}`);
-  state.session = replay.agent_session;
-  applyEvents(replay.events || []);
-  const history = await api(`/api/agent/history?agent_session_id=${encodeURIComponent(id)}&include_system=false`);
-  state.history = history.messages || [];
-  renderFeed();
+  state.refreshing = true;
+  try {
+    const replay = await api(`/api/agent/replay?agent_session_id=${encodeURIComponent(id)}&after_sequence=${state.lastSequence}`);
+    state.session = replay.agent_session;
+    applyEvents(replay.events || []);
+    const history = await api(`/api/agent/history?agent_session_id=${encodeURIComponent(id)}&include_system=false`);
+    state.history = history.messages || [];
+    renderFeed();
+    updateAgentStatus();
+  } catch (error) {
+    setStatus(`Replay error: ${error.message || error}`);
+    stopAgentPolling();
+    throw error;
+  } finally {
+    state.refreshing = false;
+  }
+}
+function startAgentPolling() {
+  if (state.pollTimer) return;
+  state.pollTimer = setInterval(refreshAgent, 1500);
+}
+function stopAgentPolling() {
+  if (!state.pollTimer) return;
+  clearInterval(state.pollTimer);
+  state.pollTimer = null;
+}
+function updateAgentStatus() {
+  const approvals = state.session?.pending_approvals || [];
+  if (approvals.length) {
+    const tool = approvals[0].tool || approvals[0].tool_name || 'tool';
+    setStatus(`Approval required · ${tool}`);
+    return;
+  }
+  if (state.session?.is_processing) {
+    setStatus(`Processing · events ${state.events.length}`);
+    startAgentPolling();
+    return;
+  }
+  stopAgentPolling();
   setStatus(`Events ${state.events.length}`);
 }
 function applyEvents(events) {
@@ -981,12 +1016,14 @@ function applyEvents(events) {
   renderFeed();
 }
 async function approve(id, approved) {
+  setStatus(approved ? 'Approving tool...' : 'Rejecting tool...');
   await api('/api/agent/approve', {method: 'POST', body: JSON.stringify({
     agent_session_id: value('agentSessionId'),
     approval_id: id,
     approved,
     actor: value('userEmail') || 'human'
   })});
+  startAgentPolling();
   setTimeout(refreshAgent, 400);
 }
 async function interruptSession() {
@@ -1001,8 +1038,9 @@ function renderApprovals() {
   const approvals = state.session?.pending_approvals || [];
   $('approvals').innerHTML = approvals.length ? approvals.map(a => `
     <div class="item">
-      <h3>${esc(a.tool_name || a.tool_call?.name || 'Tool approval')}</h3>
+      <h3>${esc(a.tool || a.tool_name || a.tool_call?.name || 'Tool approval')}</h3>
       <div class="meta">${esc(a.approval_id || a.id)}</div>
+      ${a.reason ? `<div>${esc(a.reason)}</div>` : ''}
       <pre>${esc(JSON.stringify(a.arguments || a.tool_call?.arguments || {}, null, 2))}</pre>
       <div class="row">
         <button onclick="approve('${esc(a.approval_id || a.id)}', true)">Approve</button>
