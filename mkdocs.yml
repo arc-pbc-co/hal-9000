@@ -45,9 +45,24 @@ theme:
 nav:
   - Home: index.md
   - Quick Start: guides/quick-start.md
+  - Firm-Wide Research OS: guides/firm-wide-research-os.md
+  - Technical Briefing: briefings/hal-9000-technical-briefing.md
   - Guides:
     - Getting Started: guides/getting-started.md
     - Configuration: guides/configuration.md
+    - Deployment: guides/deployment.md
+    - Production Hardening: guides/production-hardening.md
+    - Full-Team Demo Runbook: guides/demo-runbook.md
+    - Backup and Restore: guides/backup-restore.md
+    - Research Exports: guides/research-exports.md
+    - Output Quality: guides/output-quality.md
+    - Collaboration Views: guides/collaboration-views.md
+    - Corpus Hardening: guides/corpus-hardening.md
+    - Graph Relationships: guides/graph-relationships.md
+    - Access Control: guides/access-control.md
+    - SSO and OIDC: guides/sso-oidc.md
+    - Review Workflow: guides/review-workflow.md
+    - Non-CLI Apps: guides/non-cli-apps.md
     - CLI Reference: guides/cli-reference.md
     - Obsidian Integration: guides/obsidian-integration.md
     - ADAM Integration: guides/adam-integration.md
@@ -73,6 +88,11 @@ nav:
     - FAQ: wiki/faq.md
   - Development Notes:
     - README: development/README.md
+    - HAL Rebuild Plan: development/HAL_REBUILD_PLAN.md
+    - ml-intern Graft Plan: development/ml-intern-graft.md
+    - Research Programs: development/research-programs.md
+    - Shared Store Services: development/shared-store.md
+    - Migrations and Object Storage: development/migrations-and-storage.md
     - Refactor Plan: development/REFACTOR_PLAN.md
     - Test Results: development/TEST_RESULTS.md
     - Test Summary: development/TEST_SUMMARY.md

@@ -146,13 +146,14 @@ test-vault/
 test-papers/
 
 # Research PDFs and reference materials
-research/
+/research/
 *.pdf
 
 # Credentials
 credentials.json
 *.pem
 *.key
+deploy/.env
 
 # Local agent orchestration artifacts
 .ralph/

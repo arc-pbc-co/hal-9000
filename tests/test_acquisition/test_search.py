@@ -237,7 +237,9 @@ class TestSearchEngineFiltering:
     @pytest.fixture
     def engine(self):
         """Create a SearchEngine without providers."""
-        return SearchEngine(providers=[], anthropic_api_key=None)
+        engine = SearchEngine(providers=[], anthropic_api_key=None)
+        engine._anthropic = None
+        return engine
 
     @pytest.mark.asyncio
     async def test_filter_by_relevance_no_claude(self, engine):
@@ -264,3 +266,59 @@ class TestSearchEngineFiltering:
 
         # Without Claude scoring, original scores are preserved
         assert len(filtered) >= 1
+
+    @pytest.mark.asyncio
+    async def test_filter_by_relevance_falls_back_to_best_scored_results(self, engine, caplog):
+        """If no results clear the threshold, keep the best scored candidates."""
+        results = [
+            SearchResult(
+                title="Low Paper",
+                authors=[],
+                relevance_score=0.2,
+                source="test",
+            ),
+            SearchResult(
+                title="Best Paper",
+                authors=[],
+                relevance_score=0.4,
+                source="test",
+            ),
+            SearchResult(
+                title="Lowest Paper",
+                authors=[],
+                relevance_score=0.1,
+                source="test",
+            ),
+        ]
+
+        with caplog.at_level("WARNING"):
+            filtered = await engine.filter_by_relevance(
+                results,
+                "test topic",
+                threshold=0.8,
+                max_results=2,
+            )
+
+        assert [result.title for result in filtered] == ["Best Paper", "Low Paper"]
+        assert "No papers met relevance threshold=0.8" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_filter_by_relevance_respects_zero_max_results(self, engine):
+        """A zero max_results should return no papers without fallback indexing errors."""
+        results = [
+            SearchResult(
+                title="Paper",
+                authors=[],
+                relevance_score=0.4,
+                source="test",
+            )
+        ]
+
+        filtered = await engine.filter_by_relevance(
+            results,
+            "test topic",
+            threshold=0.8,
+            max_results=0,
+        )
+
+        assert filtered == []

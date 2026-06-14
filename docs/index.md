@@ -9,6 +9,7 @@ HAL 9000 is a research assistant for technical PDFs. It acquires papers, analyze
 
 [Start Here: Quick Start](guides/quick-start.md){ .md-button .md-button--primary }
 [Full Setup Guide](guides/getting-started.md){ .md-button }
+[Firm-Wide Research OS](guides/firm-wide-research-os.md){ .md-button }
 
 ## What You Can Do
 
@@ -17,6 +18,7 @@ HAL 9000 is a research assistant for technical PDFs. It acquires papers, analyze
 - Generate topic-linked notes in an Obsidian vault.
 - Build ADAM context JSON files from batches of papers.
 - Run a WebSocket gateway for integration clients.
+- Define bounded, autoresearch-style research programs for shared agent runs.
 
 ## First Commands
 
@@ -40,6 +42,7 @@ hal process /absolute/path/to/paper.pdf
 2. [Getting Started](guides/getting-started.md)
 3. [Configuration](guides/configuration.md)
 4. [CLI Reference](guides/cli-reference.md)
+5. [Firm-Wide Research OS](guides/firm-wide-research-os.md)
 
 ## Core Workflow
 

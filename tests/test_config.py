@@ -4,17 +4,25 @@ from pathlib import Path
 
 from hal9000.config import (
     ADAMConfig,
+    AgentConfig,
+    AppGatewayConfig,
+    AuthConfig,
     CloudConfig,
     DatabaseConfig,
     GatewayConfig,
     GDriveConfig,
     ObsidianConfig,
     ProcessingConfig,
+    RetentionConfig,
     Settings,
     SourcesConfig,
+    StorageConfig,
     TaxonomyConfig,
+    VectorConfig,
     get_settings,
     load_settings,
+    normalize_environment,
+    profile_config_path,
 )
 
 
@@ -188,6 +196,72 @@ class TestDatabaseConfig:
         assert "postgresql" in config.url
 
 
+class TestStorageConfig:
+    """Tests for StorageConfig."""
+
+    def test_default_values(self):
+        """Test default values."""
+        config = StorageConfig()
+
+        assert config.backend == "local"
+        assert ".hal9000_objects" in config.root_path
+
+    def test_custom_values(self):
+        """Test custom values."""
+        config = StorageConfig(
+            backend="local",
+            root_path="/custom/storage",
+        )
+
+        assert config.backend == "local"
+        assert config.root_path == "/custom/storage"
+
+    def test_s3_values(self):
+        """Test S3-compatible settings."""
+        config = StorageConfig(
+            backend="s3",
+            bucket="hal-artifacts",
+            prefix="hal9000/",
+            region="us-east-1",
+            endpoint_url="https://s3.example.com",
+        )
+
+        assert config.backend == "s3"
+        assert config.bucket == "hal-artifacts"
+        assert config.prefix == "hal9000/"
+        assert config.region == "us-east-1"
+        assert config.endpoint_url == "https://s3.example.com"
+
+
+class TestVectorConfig:
+    """Tests for VectorConfig."""
+
+    def test_default_values(self):
+        """Test default values."""
+        config = VectorConfig()
+
+        assert config.backend == "pgvector"
+        assert config.embedding_provider == "fake"
+        assert config.embedding_dimension == 1536
+        assert config.embedding_model is None
+        assert config.retrieval_limit == 5
+
+    def test_custom_values(self):
+        """Test custom values."""
+        config = VectorConfig(
+            backend="pgvector",
+            embedding_provider="openai",
+            embedding_dimension=3072,
+            embedding_model="text-embedding-3-large",
+            retrieval_limit=10,
+        )
+
+        assert config.embedding_provider == "openai"
+        assert config.embedding_dimension == 3072
+        assert config.embedding_model == "text-embedding-3-large"
+        assert config.retrieval_limit == 10
+
+
 class TestGatewayConfig:
     """Tests for GatewayConfig."""
 
@@ -215,6 +289,111 @@ class TestGatewayConfig:
         assert config.session_timeout_minutes == 30
 
 
+class TestAppGatewayConfig:
+    """Tests for AppGatewayConfig."""
+
+    def test_default_values(self):
+        """Test default values."""
+        config = AppGatewayConfig()
+
+        assert config.slack_required is False
+        assert config.slack_signing_secret is None
+        assert config.sheets_writeback_enabled is False
+        assert config.sheets_writeback_token is None
+
+    def test_custom_values(self):
+        """Test custom values."""
+        config = AppGatewayConfig(
+            slack_required=True,
+            slack_signing_secret="slack-secret",
+            sheets_writeback_enabled=True,
+            sheets_writeback_token="sheets-token",
+        )
+
+        assert config.slack_required is True
+        assert config.slack_signing_secret == "slack-secret"
+        assert config.sheets_writeback_enabled is True
+        assert config.sheets_writeback_token == "sheets-token"
+
+
+class TestAgentConfig:
+    """Tests for AgentConfig."""
+
+    def test_default_values(self):
+        """Test default values."""
+        config = AgentConfig()
+
+        assert config.model_name == "anthropic/claude-opus-4-8"
+        assert config.reasoning_effort is None
+        assert config.max_tokens == 4096
+        assert config.timeout_seconds == 600.0
+        assert config.max_retries == 3
+        assert config.approval_timeout_seconds is None
+        assert config.max_context_tokens is None
+        assert config.compact_target_tokens is None
+        assert config.compact_preserve_last == 8
+        assert config.hf_router_base_url == "https://router.huggingface.co/v1"
+
+    def test_custom_values(self):
+        """Test custom values."""
+        config = AgentConfig(
+            model_name="openai/gpt-5.5",
+            reasoning_effort="high",
+            max_tokens=8192,
+            timeout_seconds=120.0,
+            max_retries=2,
+            approval_timeout_seconds=30.0,
+            max_context_tokens=12000,
+            compact_target_tokens=8000,
+            compact_preserve_last=6,
+            hf_router_base_url="https://router.example.com/v1",
+        )
+
+        assert config.model_name == "openai/gpt-5.5"
+        assert config.reasoning_effort == "high"
+        assert config.max_tokens == 8192
+        assert config.timeout_seconds == 120.0
+        assert config.max_retries == 2
+        assert config.approval_timeout_seconds == 30.0
+        assert config.max_context_tokens == 12000
+        assert config.compact_target_tokens == 8000
+        assert config.compact_preserve_last == 6
+        assert config.hf_router_base_url == "https://router.example.com/v1"
+
+
+class TestRetentionConfig:
+    """Tests for RetentionConfig."""
+
+    def test_default_values(self):
+        """Test default values."""
+        config = RetentionConfig()
+
+        assert config.enabled is False
+        assert config.run_event_days == 365
+        assert config.tool_call_days == 365
+        assert config.notification_days == 180
+        assert config.audit_event_days == 730
+        assert config.gateway_session_days == 30
+
+    def test_custom_values(self):
+        """Test custom values."""
+        config = RetentionConfig(
+            enabled=True,
+            run_event_days=90,
+            tool_call_days=90,
+            notification_days=30,
+            audit_event_days=365,
+            gateway_session_days=7,
+        )
+
+        assert config.enabled is True
+        assert config.run_event_days == 90
+        assert config.tool_call_days == 90
+        assert config.notification_days == 30
+        assert config.audit_event_days == 365
+        assert config.gateway_session_days == 7
+
+
 class TestSettings:
     """Tests for main Settings class."""
 
@@ -229,7 +408,14 @@ class TestSettings:
         assert isinstance(settings.processing, ProcessingConfig)
         assert isinstance(settings.taxonomy, TaxonomyConfig)
         assert isinstance(settings.database, DatabaseConfig)
+        assert isinstance(settings.storage, StorageConfig)
+        assert isinstance(settings.vector, VectorConfig)
         assert isinstance(settings.gateway, GatewayConfig)
+        assert isinstance(settings.app_gateway, AppGatewayConfig)
+        assert isinstance(settings.auth, AuthConfig)
+        assert isinstance(settings.agent, AgentConfig)
+        assert isinstance(settings.retention, RetentionConfig)
+        assert settings.environment == "local"
         assert settings.log_level == "INFO"
         assert settings.verbose is False
 
@@ -260,17 +446,134 @@ class TestSettings:
 
         assert isinstance(cache_path, Path)
 
+    def test_get_storage_path(self):
+        """Test get_storage_path method."""
+        settings = Settings()
+        storage_path = settings.get_storage_path()
+
+        assert isinstance(storage_path, Path)
+
     def test_custom_settings(self):
         """Test creating settings with custom values."""
         settings = Settings(
+            environment="staging",
             log_level="DEBUG",
             verbose=True,
             anthropic_api_key="test-key"
         )
 
+        assert settings.environment == "staging"
         assert settings.log_level == "DEBUG"
         assert settings.verbose is True
         assert settings.anthropic_api_key == "test-key"
+
+    def test_profile_readiness_issues_for_local(self):
+        """Local profile should be deployment-ready with local defaults."""
+        settings = Settings()
+
+        assert settings.profile_readiness_issues() == []
+
+    def test_profile_readiness_issues_for_production(self):
+        """Production profile should flag unsafe storage/database defaults."""
+        settings = Settings(environment="production")
+
+        issues = settings.profile_readiness_issues()
+
+        assert "database.url should use postgresql+psycopg:// for staging/production" in issues
+        assert "storage.backend should be s3 for staging/production" in issues
+
+    def test_profile_readiness_issues_for_enabled_auth(self):
+        """Enabled production auth should require OIDC issuer and audience."""
+        settings = Settings(
+            environment="production",
+            database={"url": "postgresql+psycopg://hal@example/db"},
+            storage={"backend": "s3", "bucket": "hal-artifacts"},
+            auth={"enabled": True},
+        )
+
+        issues = settings.profile_readiness_issues()
+
+        assert "auth.oidc_issuer_url is required when auth is enabled" in issues
+        assert "auth.oidc_audience is required when auth is enabled" in issues
+
+    def test_profile_readiness_issues_for_required_app_gateway_secrets(self):
+        """Production app integrations should fail readiness when enabled without secrets."""
+        settings = Settings(
+            environment="production",
+            database={"url": "postgresql+psycopg://hal@example/db"},
+            storage={"backend": "s3", "bucket": "hal-artifacts"},
+            app_gateway={
+                "slack_required": True,
+                "sheets_writeback_enabled": True,
+            },
+        )
+
+        issues = settings.profile_readiness_issues()
+
+        assert (
+            "app_gateway.slack_signing_secret is required when Slack is required"
+            in issues
+        )
+        assert (
+            "app_gateway.sheets_writeback_token is required when Sheets writeback is enabled"
+            in issues
+        )
+
+
+class TestEnvironmentProfiles:
+    """Tests for named environment profiles."""
+
+    def test_normalize_environment(self):
+        """Profile names should normalize and reject unsupported values."""
+        assert normalize_environment("Production") == "production"
+
+    def test_profile_config_path(self):
+        """Profile config paths should point at checked-in templates."""
+        assert profile_config_path("local").name == "local.yaml"
+        assert profile_config_path("production").exists()
+
+    def test_load_staging_profile(self):
+        """The staging profile should load shared-service defaults."""
+        settings = load_settings(environment="staging")
+
+        assert settings.environment == "staging"
+        assert settings.database.url.startswith("postgresql+psycopg://")
+        assert settings.storage.backend == "s3"
+        assert settings.storage.bucket == "hal9000-staging-artifacts"
+        assert settings.vector.backend == "pgvector"
+        assert settings.profile_readiness_issues() == []
+
+    def test_explicit_config_overrides_profile(self, temp_directory: Path):
+        """A caller-supplied config file should override profile defaults."""
+        import yaml
+
+        config_path = temp_directory / "override.yaml"
+        with open(config_path, "w") as f:
+            yaml.dump(
+                {
+                    "hal9000": {
+                        "database": {"url": "sqlite:///./override.db"},
+                        "storage": {"backend": "local", "root_path": "./objects"},
+                    }
+                },
+                f,
+            )
+
+        settings = load_settings(config_file=config_path, environment="staging")
+
+        assert settings.environment == "staging"
+        assert settings.database.url == "sqlite:///./override.db"
+        assert settings.storage.backend == "local"
+
+    def test_environment_variables_override_profile(self, monkeypatch):
+        """Deployment env vars should override checked-in profile templates."""
+        monkeypatch.setenv("HAL9000_DATABASE__URL", "postgresql+psycopg://u:p@db/hal")
+        monkeypatch.setenv("HAL9000_STORAGE__BUCKET", "firm-hal-artifacts")
+
+        settings = load_settings(environment="production")
+
+        assert settings.database.url == "postgresql+psycopg://u:p@db/hal"
+        assert settings.storage.bucket == "firm-hal-artifacts"
 
 
 class TestLoadSettings:
@@ -341,6 +644,7 @@ class TestGetSettings:
         # Reset the global settings
         import hal9000.config as config_module
         config_module._settings = None
+        config_module._settings_environment = None
 
         settings = get_settings()
 
@@ -350,6 +654,7 @@ class TestGetSettings:
         """Test that get_settings returns the same instance."""
         import hal9000.config as config_module
         config_module._settings = None
+        config_module._settings_environment = None
 
         settings1 = get_settings()
         settings2 = get_settings()
@@ -364,6 +669,7 @@ class TestGetSettings:
 
         config_module._settings = None
         config_module._settings_config_path = None
+        config_module._settings_environment = None
 
         config_data = {
             "hal9000": {
@@ -376,6 +682,21 @@ class TestGetSettings:
 
         settings = get_settings(config_file=config_path, force_reload=True)
         assert settings.log_level == "WARNING"
+
+    def test_get_settings_respects_environment_profile(self):
+        """The settings singleton should cache by environment profile."""
+        import hal9000.config as config_module
+
+        config_module._settings = None
+        config_module._settings_config_path = None
+        config_module._settings_environment = None
+
+        local_settings = get_settings(environment="local", force_reload=True)
+        staging_settings = get_settings(environment="staging")
+
+        assert local_settings.environment == "local"
+        assert staging_settings.environment == "staging"
+        assert local_settings is not staging_settings
 
 
 class TestEnvironmentVariables:
@@ -428,3 +749,29 @@ class TestEnvironmentVariables:
         settings = Settings()
 
         assert settings.gateway.port == 8080
+
+    def test_env_var_agent_model_name(self, monkeypatch):
+        """Test agent model from environment."""
+        monkeypatch.setenv("HAL9000_AGENT__MODEL_NAME", "openai/gpt-5.5")
+
+        settings = Settings()
+
+        assert settings.agent.model_name == "openai/gpt-5.5"
+
+    def test_env_var_app_gateway_and_retention(self, monkeypatch):
+        """Test production hardening settings from environment."""
+        monkeypatch.setenv("HAL9000_APP_GATEWAY__SLACK_REQUIRED", "true")
+        monkeypatch.setenv("HAL9000_APP_GATEWAY__SHEETS_WRITEBACK_ENABLED", "true")
+        monkeypatch.setenv("HAL9000_RETENTION__ENABLED", "true")
+        monkeypatch.setenv("HAL9000_RETENTION__NOTIFICATION_DAYS", "14")
+        monkeypatch.setenv("HAL9000_RETENTION__PDF_ARTIFACT_DAYS", "365")
+        monkeypatch.setenv("HAL9000_RETENTION__OUTPUT_ARTIFACT_DAYS", "90")
+
+        settings = Settings()
+
+        assert settings.app_gateway.slack_required is True
+        assert settings.app_gateway.sheets_writeback_enabled is True
+        assert settings.retention.enabled is True
+        assert settings.retention.notification_days == 14
+        assert settings.retention.pdf_artifact_days == 365
+        assert settings.retention.output_artifact_days == 90

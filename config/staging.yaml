@@ -1,0 +1,36 @@
+# HAL 9000 staging profile
+#
+# Override placeholder values with a secure config file or environment variables
+# before running workers against shared staging services.
+
+hal9000:
+  environment: staging
+
+  database:
+    url: postgresql+psycopg://hal9000:change-me@localhost:5432/hal9000_staging
+
+  storage:
+    backend: s3
+    root_path: ./.hal9000_objects
+    bucket: hal9000-staging-artifacts
+    prefix: staging/
+    region: us-east-1
+    endpoint_url: null
+
+  vector:
+    backend: pgvector
+    embedding_provider: fake
+    embedding_dimension: 1536
+    embedding_model: null
+    retrieval_limit: 8
+
+  acquisition:
+    max_concurrent_downloads: 2
+    rate_limit_seconds: 1.0
+
+  gateway:
+    host: 0.0.0.0
+    port: 9000
+
+  log_level: INFO
+  verbose: false

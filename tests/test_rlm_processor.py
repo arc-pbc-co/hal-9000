@@ -3,8 +3,6 @@
 import json
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from hal9000.rlm.processor import (
     ChunkResult,
     DocumentAnalysis,
@@ -96,17 +94,38 @@ class TestRLMProcessor:
     def test_init_custom(self):
         """Test custom initialization."""
         with patch('hal9000.rlm.processor.Anthropic'):
+            calls = []
             processor = RLMProcessor(
                 api_key="test-key",
                 model="claude-3-opus",
                 chunk_size=30000,
                 chunk_overlap=500,
-                max_concurrent_calls=3
+                max_concurrent_calls=3,
+                llm_call_callback=calls.append,
             )
 
             assert processor.model == "claude-3-opus"
             assert processor.chunk_size == 30000
             assert processor.chunk_overlap == 500
+            assert processor.llm_call_callback is not None
+
+    def test_call_llm_records_callback(self):
+        """LLM calls should emit callback telemetry before provider calls."""
+        with patch('hal9000.rlm.processor.Anthropic') as mock_anthropic:
+            mock_client = MagicMock()
+            mock_client.messages.create.return_value = MagicMock(
+                content=[MagicMock(text='{"ok": true}')]
+            )
+            mock_anthropic.return_value = mock_client
+            calls = []
+            processor = RLMProcessor(llm_call_callback=calls.append)
+
+            response = processor._call_llm("test prompt", max_tokens=123)
+
+            assert response == '{"ok": true}'
+            assert processor.llm_calls_made == 1
+            assert calls[0]["prompt_chars"] == len("test prompt")
+            assert calls[0]["max_tokens"] == 123
 
     def test_chunk_document_small(self):
         """Test chunking with small document."""

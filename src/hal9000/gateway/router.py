@@ -183,7 +183,7 @@ async def streaming_handler(
     )
 
 
-def create_router_with_defaults() -> Router:
+def create_router_with_defaults(agent_session_manager=None) -> Router:
     """Create a router with default handlers for common message types.
 
     Returns:
@@ -193,5 +193,12 @@ def create_router_with_defaults() -> Router:
 
     # Register health handler for queries (supports health checks and echo fallback)
     router.register(MessageType.QUERY, health_handler)
+    if agent_session_manager is not None:
+        from hal9000.gateway.agent_session import create_agent_session_command_handler
+
+        router.register(
+            MessageType.COMMAND,
+            create_agent_session_command_handler(agent_session_manager),
+        )
 
     return router

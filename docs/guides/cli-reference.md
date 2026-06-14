@@ -14,9 +14,158 @@ hal [OPTIONS] COMMAND [ARGS]
 |--------|-------------|
 | `-v, --verbose` | Enable verbose output with debug logging |
 | `--config PATH` | Path to a custom configuration file |
+| `--profile local\|staging\|production` | Environment profile to load |
 | `--help` | Show help message and exit |
 
 ## Commands
+
+### Research Programs
+
+```bash
+hal research init-program ./program.md
+hal research validate-program ./program.md
+hal research create-project superalloys --name "Superalloys"
+hal research create-user researcher@example.com --display-name "Researcher"
+hal research create-team materials --name "Materials"
+hal research add-team-member materials researcher@example.com --role member
+hal research grant-project-access superalloys --team-slug materials --role reviewer
+hal research map-oidc-user --claims-json '{"sub":"s1","email":"researcher@example.com","groups":["hal:materials"]}'
+hal research save-program ./program.md --project-slug superalloys
+hal research bootstrap --project-slug firm-research --owner research@example.com
+hal research demo-seed --project-slug hal-demo --owner bwisk@arc-pbc.com
+hal research queue-run --program-id <saved-program-id>
+hal research runs --project-slug superalloys
+hal research observe
+hal research observe --json
+hal research harden-corpus --refresh-policy interval --refresh-interval-days 30
+hal research dedupe-report --created-by curator@example.com --json
+hal research create-collection firm-research --name "Demo Collection"
+hal research add-collection-item firm-research demo-collection --target-type output --target-id <output-id>
+hal research collections firm-research --json
+hal research save-search firm-research --name "Creep Claims" --query "single crystal creep" --target memory
+hal research saved-searches firm-research --json
+hal research create-shared-view firm-research --name "Review Queue" --view-type review_queue
+hal research shared-views firm-research --json
+hal research notify-review-ready <run-id> --recipient reviewer@example.com --channel slack
+hal research notifications --recipient reviewer@example.com --json
+hal research deliver-notifications --channel slack --limit 20
+hal research slack-command --user reviewer@example.com --text "review firm-research" --json
+hal research slack-command --user reviewer@example.com --text "summary <run-id>" --json
+hal research slack-command --user reviewer@example.com --text "exports <run-id>" --json
+hal research sync-sheets firm-research --target review_queue --spreadsheet-id <sheet-id> --range-name "Review!A1" --actor reviewer@example.com --dry-run --json
+hal research audit-events --project-slug firm-research --json
+hal research retention-plan --json
+hal research retention-apply --confirm --json
+hal research compliance-check --json
+hal research worker-service --limit 5 --poll-seconds 30 --max-iterations 1 --json
+hal release changelog --version 0.1.0 --change "Release 0.1.0" --dry-run
+hal --profile staging release validate-staging --json
+hal gateway http --host 127.0.0.1 --port 9101
+hal research run-log <run-id>
+hal research run-summary <run-id> --as-user reviewer@example.com
+hal research run-summary <run-id> --json --as-user reviewer@example.com
+hal research review-queue --reviewer reviewer@example.com
+hal research review-detail <run-id> --reviewer reviewer@example.com --json
+hal research add-review-comment --target-type output --target-id <output-id> --author reviewer@example.com --body "Add citation."
+hal research review-comments --target-type output --target-id <output-id> --viewer reviewer@example.com --json
+hal research resolve-review-comment <annotation-id> --resolver reviewer@example.com
+hal research review-run <run-id> --decision promote --reviewer reviewer@example.com
+hal research review-run <run-id> --decision reject --reviewer reviewer@example.com
+hal research review-run <run-id> --decision request-changes --reviewer reviewer@example.com
+hal research output-versions <output-id>
+hal research diff-output <output-id> --from-version 1 --to-version 2
+hal research export-run <run-id> --target markdown
+hal research export-run <run-id> --target graph --status all --json
+hal research export-run <run-id> --target json --json
+hal research export-project firm-research --target dashboard --json
+hal research search-chunks "single crystal creep resistance" --project-slug superalloys
+hal research search-memory "single crystal creep resistance" --target claims --target outputs --graph-boost --json
+hal research add-graph-edge --source-type claim --source-id <claim-id> --relationship studies_material --target-type material --target-id "CMSX-4"
+hal research graph-edges --relationship supports --json
+hal research graph-project firm-research --mermaid
+hal research graph-neighborhood material "CMSX-4" --depth 2 --json
+hal research log-run-event <run-id> --event-type tool.search
+hal research update-run <run-id> --status running
+hal research execute-run <run-id> --actor hal-worker
+hal research execute-run <run-id> --actor hal-worker --live-acquisition
+hal research execute-run <run-id> --max-attempts 2 --phase-timeout-seconds 300
+hal research cancel-run <run-id> --actor reviewer@example.com
+hal research work-queue --limit 5 --max-attempts 2
+```
+
+These commands create and validate autoresearch-style research programs, persist
+them into the shared store, queue bounded research run records, and inspect or
+advance the run lifecycle. `execute-run` runs the first bounded worker path and
+stages required outputs plus a run report. `search-chunks` queries embedded
+document chunks through the configured embedding provider and returns the first
+semantic memory results for a project or run. During execution, the worker now
+prepares completed local documents into chunks, embeddings, first-pass claims,
+retrieval context, and staged outputs when corpus records are available.
+`search-memory` extends retrieval to extracted claims and staged/promoted outputs
+using the same embedding provider contract, and `--graph-boost` can lift
+claim/output results connected by active graph edges.
+`add-graph-edge`, `graph-edges`, `graph-project`, and `graph-neighborhood`
+manage and visualize typed research relationships such as
+`cites`, `supports`, `contradicts`, `uses_method`, `studies_material`, and
+`reports_property` across documents, chunks, claims, outputs, and literal
+material/method/property nodes.
+`create-user`, `create-team`, `add-team-member`, `grant-project-access`, and
+`map-oidc-user` seed the first firm-wide identity and project permission records.
+`demo-seed` creates a repeatable full-team walkthrough dataset with a staged run,
+source memory, reviewable outputs, comments, notifications, saved views, and
+audit events.
+`observe` gives operators a compact dashboard over run status counts, queue
+health, tool-call totals/costs, recent worker outcomes, recent failures, and
+recent runs. Use `--json` for downstream dashboards or API responses.
+`harden-corpus` attaches stable document source identity, version fields, refresh
+policy, normalized citations, and source quality scores. `dedupe-report`
+persists likely duplicate-source groups for corpus curation and downstream app
+surfaces.
+`create-collection`, `add-collection-item`, and `collections` manage shared
+project collections. `save-search` and `saved-searches` preserve reusable
+retrieval queries. `create-shared-view` and `shared-views` define saved dashboard,
+review, search, collection, or audit views. `notify-review-ready`,
+`notifications`, `deliver-notifications`, `slack-command`, `slack-action`,
+`sync-sheets`, and `audit-events` provide the durable collaboration feed and
+non-CLI app contracts for browser UI, Slack, Sheets, email, and compliance-style
+review trails. `retention-plan` and `retention-apply` provide the dry-run-first
+operational retention controls for run events, tool calls, notifications, audit
+events, persisted gateway sessions, and object artifacts. `compliance-check`
+reports copyrighted/restricted PDF sources and generated summaries that need
+rights or provenance review before promotion.
+`worker-service` is the packaged process-manager shape for continuous queue
+polling. `release changelog` and `release validate-staging` cover release-note
+generation and staging-demo readiness.
+`bootstrap` creates or reuses a baseline firm project and starter research
+programs from `templates/research/programs`, making it safe to run repeatedly
+when setting up local, staging, or production stores.
+`--live-acquisition` lets the worker search, download, and process new papers
+within the run's paper/download budget and tool policy; each live acquisition
+call is recorded as a durable tool-call record. Runtime and RLM LLM-call budgets
+are enforced during worker execution, and live acquisition emits progress events
+plus per-paper `acquisition.paper.*` outcomes into the run log.
+`run-summary` condenses the durable event log, tool calls, acquisition outcomes,
+budget usage, warnings, staged outputs, and reviewer notes into a compact review
+view. Use `--json` when feeding dashboards or a future review UI.
+`review-queue` lists staged runs the reviewer has permission to review, and
+`review-detail` returns the authorized detail payload intended for review UI
+adapters.
+`review-run` records a reviewer decision for every staged output on the run,
+requires reviewer project access, and advances the run to `promoted`,
+`rejected`, or `changes_requested`.
+`add-review-comment`, `review-comments`, and `resolve-review-comment` provide
+the first comments/annotations workflow for outputs and claims.
+`output-versions` and `diff-output` let reviewers inspect source-rich artifact
+history before promotion.
+`export-run` and `export-project` publish promoted outputs into object-store
+artifacts for ADAM, Obsidian, Markdown, JSON, dashboard, and graph consumers. Use
+`--status staged` for pre-review handoffs and `--status all` for administrative
+exports. Use `--as-user` on run logs, summaries, and exports when invoking those
+commands through shared API or UI adapters that need permission enforcement.
+`cancel-run` records cancellation requests; queued runs are cancelled immediately,
+while running runs move to `cancel_requested` until the worker observes the
+request. `work-queue` executes queued runs once, which makes it suitable for
+cron, process managers, or a future scheduler service.
 
 ### `hal acquire`
 

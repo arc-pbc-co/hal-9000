@@ -1,12 +1,10 @@
 """Pytest configuration and shared fixtures for HAL 9000 tests."""
 
 import tempfile
+from collections.abc import Generator
 from pathlib import Path
-from typing import Generator
-from unittest.mock import patch
 
 import pytest
-
 
 # Path to the test PDFs folder
 TEST_PDF_FOLDER = Path(__file__).parent.parent / "research" / "01-superalloys-nickel-materials"
@@ -15,6 +13,8 @@ TEST_PDF_FOLDER = Path(__file__).parent.parent / "research" / "01-superalloys-ni
 @pytest.fixture
 def test_pdf_folder() -> Path:
     """Return path to test PDF folder."""
+    if not any(TEST_PDF_FOLDER.glob("*.pdf")):
+        pytest.skip(f"PDF integration corpus not available: {TEST_PDF_FOLDER}")
     return TEST_PDF_FOLDER
 
 
@@ -31,7 +31,10 @@ def sample_pdf_path(test_pdf_folder: Path) -> Path:
 @pytest.fixture
 def all_test_pdfs(test_pdf_folder: Path) -> list[Path]:
     """Return paths to all test PDFs."""
-    return list(test_pdf_folder.glob("*.pdf"))
+    pdfs = list(test_pdf_folder.glob("*.pdf"))
+    if not pdfs:
+        pytest.skip("No PDFs found in test folder")
+    return pdfs
 
 
 @pytest.fixture

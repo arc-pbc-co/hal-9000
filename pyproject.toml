@@ -40,6 +40,7 @@ dependencies = [
     "pdfplumber>=0.10.0",
     "pypdf>=4.0.0",
     "sqlalchemy>=2.0.0",
+    "alembic>=1.13.0",
     "anthropic>=0.40.0",
     "rich>=13.0.0",
     "watchdog>=4.0.0",
@@ -69,8 +70,20 @@ gdrive = [
     "google-api-python-client>=2.0.0",
     "google-auth-oauthlib>=1.0.0",
 ]
+agent = [
+    "litellm>=1.83.0",
+    "huggingface_hub>=1.0.0",
+]
+postgres = [
+    "psycopg[binary]>=3.2.0",
+]
+s3 = [
+    "boto3>=1.34.0",
+]
 vector = [
     "chromadb>=0.5.0",
+    "pgvector>=0.3.0",
+    "psycopg[binary]>=3.2.0",
 ]
 docs = [
     "mkdocs-material>=9.5.0",
@@ -89,6 +102,8 @@ include = [
     "/src",
     "/config",
     "/templates",
+    "/migrations",
+    "/alembic.ini",
 ]
 
 [tool.ruff]
