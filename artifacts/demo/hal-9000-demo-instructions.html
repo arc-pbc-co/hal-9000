@@ -278,7 +278,38 @@ http://127.0.0.1:9101/ui</code></pre>
     </section>
 
     <section>
-      <div class="eyebrow">5. Optional Custom Topic</div>
+      <div class="eyebrow">5. Review A Completed Run</div>
+      <h2>Use a simple green/yellow/red readout.</h2>
+      <p>This checklist is for a nontechnical demo operator after any live agent run.</p>
+      <div class="grid">
+        <div class="card">
+          <strong>Green: present it</strong>
+          <p>HAL staged outputs, the Review tab has a brief or evidence table, Evidence shows chunks and claims, and the answer includes source or evidence IDs.</p>
+        </div>
+        <div class="card">
+          <strong>Yellow: explain it</strong>
+          <p>HAL imported metadata, asks to retry or narrow the topic, or labels the answer as orientation rather than source-backed findings.</p>
+        </div>
+        <div class="card">
+          <strong>Red: do not present</strong>
+          <p>A tool error appears, Evidence shows zero chunks, Review has no staged outputs, or HAL refuses to write a report because claims are not traceable.</p>
+        </div>
+      </div>
+      <p>If a run is yellow or red, say: "HAL is doing the right thing by not fabricating a sourced report. We will use the seeded run to show the full review workflow, then rerun live acquisition after rehearsal."</p>
+      <h3>Fast cockpit review path</h3>
+      <ol>
+        <li>Click <code>Review</code>, then <code>Load Review</code>.</li>
+        <li>Select the newest staged run.</li>
+        <li>Read the research brief first.</li>
+        <li>Open the evidence table and check that each claim has a citation or evidence marker.</li>
+        <li>Click <code>Evidence</code>, paste the run id, and confirm chunks and claims are present.</li>
+        <li>Click <code>Graph</code>, load the project/run graph, and confirm outputs connect back to documents or claims.</li>
+        <li>Only export or share the run after the review status is staged, promoted, or explicitly approved by the presenter.</li>
+      </ol>
+    </section>
+
+    <section>
+      <div class="eyebrow">6. Optional Custom Topic</div>
       <h2>Run a live research topic when conditions allow.</h2>
       <p>Use this only when internet access and acquisition dependencies are available. For customer meetings, run this before the call and present the resulting run.</p>
       <pre><code>python3 -m hal9000.cli research init-program \

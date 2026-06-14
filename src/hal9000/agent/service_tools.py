@@ -185,7 +185,7 @@ def create_hal_service_tool_router() -> AgentToolRouter:
     return AgentToolRouter(build_hal_service_tools())
 
 
-def hal_acquire(arguments: dict[str, Any], context: AgentToolContext) -> AgentToolResult:
+async def hal_acquire(arguments: dict[str, Any], context: AgentToolContext) -> AgentToolResult:
     """Acquire papers for the current HAL research run."""
     store = _require_store(context)
     run = _resolve_run(context, arguments.get("run_id"))
@@ -208,7 +208,11 @@ def hal_acquire(arguments: dict[str, Any], context: AgentToolContext) -> AgentTo
             raise ValueError("hal_acquire requires context.metadata['acquisition_runner'] or settings")
         runner = LiveAcquisitionRunner(settings=settings, db_session=store.session)
 
-    result = runner.acquire(topic=topic, max_papers=max_papers)
+    acquire_async = getattr(runner, "acquire_async", None)
+    if callable(acquire_async):
+        result = await acquire_async(topic=topic, max_papers=max_papers)
+    else:
+        result = runner.acquire(topic=topic, max_papers=max_papers)
     payload = _to_dict(result)
     store.append_run_event(
         run,

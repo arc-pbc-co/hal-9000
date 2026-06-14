@@ -188,6 +188,9 @@ class AgentToolRouter:
                         **result.payload,
                     },
                 )
+            persistence_error = _commit_context_store(context)
+            if persistence_error is not None:
+                result = persistence_error
 
         return result
 
@@ -241,6 +244,9 @@ class AgentToolRouter:
                     "reason": message,
                 },
             )
+            persistence_error = _commit_context_store(context)
+            if persistence_error is not None:
+                return persistence_error
 
         return result
 
@@ -261,3 +267,23 @@ def _tool_output_payload(result: AgentToolResult) -> dict[str, Any]:
     payload.setdefault("output", result.output)
     payload.setdefault("success", result.success)
     return payload
+
+
+def _commit_context_store(context: AgentToolContext) -> AgentToolResult | None:
+    """Commit durable tool side effects when a context owns a store session."""
+    store = context.store
+    session = getattr(store, "session", None)
+    commit = getattr(session, "commit", None)
+    if not callable(commit):
+        return None
+    try:
+        commit()
+    except Exception as exc:
+        rollback = getattr(session, "rollback", None)
+        if callable(rollback):
+            rollback()
+        return AgentToolResult.error(
+            f"Failed to persist HAL tool result: {exc}",
+            payload={"error_type": type(exc).__name__},
+        )
+    return None

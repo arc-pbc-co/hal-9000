@@ -86,7 +86,55 @@ Open:
 5. Open `Evidence` with the selected run id and show claims/chunks/outputs.
 6. Open `Graph` and show the relationship view.
 
-## 5. Optional Custom Topic
+## 5. Review A Completed Run
+
+Use this checklist after any live agent run. It is written for a nontechnical
+demo operator.
+
+### Green Run: Good To Present
+
+- The final answer says HAL produced or staged outputs.
+- The `Review` tab shows staged outputs such as a research brief, evidence
+  table, open questions, or ADAM context.
+- The `Evidence` tab shows nonzero chunks and claims for the selected run.
+- The answer cites evidence IDs, claim IDs, documents, or output IDs.
+- The `Graph` tab shows relationships connected to the project or run.
+
+### Yellow Run: Explain As Partial
+
+- HAL imported paper metadata but says it does not have full-text chunks.
+- Search results look broad or off-topic.
+- HAL asks to retry acquisition, process PDFs, or narrow the topic.
+- The final answer is clearly labeled as orientation rather than source-backed
+  findings.
+
+### Red Run: Do Not Present As Research Output
+
+- A tool reports an error such as `asyncio.run() cannot be called from a running
+  event loop`.
+- The `Evidence` tab shows zero chunks for the selected run.
+- The `Review` tab has no staged outputs for that run.
+- HAL refuses to write a polished report because it cannot trace claims to
+  evidence.
+
+If a run is yellow or red, tell the audience: "HAL is doing the right thing by
+not fabricating a sourced report. We will use the seeded run to show the full
+review workflow, then rerun live acquisition after rehearsal."
+
+### Fast Review Path In The Cockpit
+
+1. Click `Review`, then `Load Review`.
+2. Select the newest staged run.
+3. Read the research brief first.
+4. Open the evidence table and check that each claim has a citation or evidence
+   marker.
+5. Click `Evidence`, paste the run id, and confirm chunks and claims are present.
+6. Click `Graph`, load the project/run graph, and confirm the outputs connect
+   back to documents or claims.
+7. Only export or share the run after the review status is staged, promoted, or
+   explicitly approved by the presenter.
+
+## 6. Optional Custom Topic
 
 Use this only when live acquisition and network conditions are safe:
 

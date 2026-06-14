@@ -35,6 +35,25 @@ class FakeAcquisitionRunner:
         )
 
 
+class AsyncFakeAcquisitionRunner:
+    """Fake async acquisition runner for agent-loop acquisition tests."""
+
+    def __init__(self):
+        self.calls = []
+
+    def acquire(self, topic: str, max_papers: int):
+        raise AssertionError("hal_acquire should prefer acquire_async in the agent runtime")
+
+    async def acquire_async(self, topic: str, max_papers: int):
+        self.calls.append({"topic": topic, "max_papers": max_papers})
+        return WorkerAcquisitionResult(
+            papers_found=max_papers,
+            papers_downloaded=max_papers,
+            papers_processed=max_papers,
+            document_ids=["async-doc-1", "async-doc-2"][:max_papers],
+        )
+
+
 class FakeHFResearchClient:
     """Fake HF discovery client for service-tool tests."""
 
@@ -379,6 +398,31 @@ async def test_hal_acquire_uses_attached_runner_and_budget(temp_directory: Path)
 
 
 @pytest.mark.asyncio
+async def test_hal_acquire_prefers_async_runner_in_agent_loop(temp_directory: Path):
+    """hal_acquire should not call asyncio.run from an active agent event loop."""
+    session, _store, _project, run, context = _research_context(
+        temp_directory,
+        allowed_tools=["acquire"],
+    )
+    runner = AsyncFakeAcquisitionRunner()
+    context.metadata["acquisition_runner"] = runner
+
+    try:
+        result = await _router().call_tool(
+            "hal_acquire",
+            {"topic": "binder jet nickel superalloy", "max_papers": 2},
+            context=context,
+        )
+
+        assert result.success is True
+        assert runner.calls == [{"topic": "binder jet nickel superalloy", "max_papers": 2}]
+        assert result.payload["papers_processed"] == 2
+        assert "agent.acquire.completed" in [event.event_type for event in run.events]
+    finally:
+        session.close()
+
+
+@pytest.mark.asyncio
 async def test_hal_process_pdf_prepares_existing_document(temp_directory: Path):
     """hal_process_pdf should chunk, embed, and extract first-pass claims."""
     session, store, _project, run, context = _research_context(
@@ -574,6 +618,45 @@ async def test_hal_hf_papers_imports_documents_chunks_and_claims(temp_directory:
         assert "agent.hf.papers.imported" in [event.event_type for event in run.events]
     finally:
         session.close()
+
+
+@pytest.mark.asyncio
+async def test_agent_tool_router_commits_hf_paper_imports(temp_directory: Path):
+    """Successful live-agent tools should be durable when the tool call returns."""
+    session, _store, _project, run, context = _research_context(
+        temp_directory,
+        allowed_tools=["hf_research"],
+    )
+    client = FakeHFResearchClient()
+    context.metadata["hf_research_client"] = client
+    db_url = f"sqlite:///{temp_directory / 'agent_tools.db'}"
+    run_id = run.id
+
+    try:
+        result = await _router().call_tool(
+            "hal_hf_papers",
+            {"operation": "search", "query": "superalloy agents", "limit": 2},
+            context=context,
+        )
+
+        assert result.success is True
+        assert result.payload["document_count"] == 2
+    finally:
+        session.close()
+
+    _, session_factory = init_db(db_url)
+    reopened = session_factory()
+    try:
+        documents = reopened.query(Document).filter_by(source_type="huggingface_paper").all()
+        claims = reopened.query(ExtractedClaim).filter_by(run_id=run_id).all()
+        events = [event.event_type for event in reopened.get(type(run), run_id).events]
+
+        assert len(documents) == 2
+        assert len(claims) == 2
+        assert "agent.hf.papers.imported" in events
+        assert "agent.tool.completed" in events
+    finally:
+        reopened.close()
 
 
 @pytest.mark.asyncio

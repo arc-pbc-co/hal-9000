@@ -73,6 +73,23 @@ class LiveAcquisitionRunner:
         llm_call_callback: LLMCallCallback | None = None,
     ) -> WorkerAcquisitionResult:
         """Search, download, and process papers through the acquisition stack."""
+        return asyncio.run(
+            self.acquire_async(
+                topic=topic,
+                max_papers=max_papers,
+                progress_callback=progress_callback,
+                llm_call_callback=llm_call_callback,
+            )
+        )
+
+    async def acquire_async(
+        self,
+        topic: str,
+        max_papers: int,
+        progress_callback: ProgressCallback | None = None,
+        llm_call_callback: LLMCallCallback | None = None,
+    ) -> WorkerAcquisitionResult:
+        """Search, download, and process papers from an existing event loop."""
         from hal9000.acquisition.orchestrator import AcquisitionOrchestrator
         from hal9000.ingest import PDFProcessor
         from hal9000.rlm import RLMProcessor
@@ -96,16 +113,14 @@ class LiveAcquisitionRunner:
             if progress_callback:
                 progress_callback(stage, current, total)
 
-        result = asyncio.run(
-            orchestrator.acquire(
-                topic=topic,
-                max_papers=max_papers,
-                process_papers=True,
-                generate_notes=False,
-                relevance_threshold=self.settings.acquisition.relevance_threshold,
-                sources=self.settings.acquisition.default_sources,
-                progress_callback=record_progress,
-            )
+        result = await orchestrator.acquire(
+            topic=topic,
+            max_papers=max_papers,
+            process_papers=True,
+            generate_notes=False,
+            relevance_threshold=self.settings.acquisition.relevance_threshold,
+            sources=self.settings.acquisition.default_sources,
+            progress_callback=record_progress,
         )
         return WorkerAcquisitionResult(
             papers_found=result.papers_found,
